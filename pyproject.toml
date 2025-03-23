@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "gerion-cli"
+version = "0.1.0"
+description = ""
+authors = ["gerion-appsec <info@gerion-appsec.com>"]
+readme = "README.md"
+
+[tool.poetry.scripts]
+gerion-cli = "gerion_cli.main:app"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+typer = "^0.15.2"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

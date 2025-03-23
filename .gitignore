@@ -1,0 +1,4 @@
+gerion-cli-venv
+.env
+__pycache__
+report.json
