@@ -13,8 +13,7 @@ def run_secrets_tool(code_path):
             return data
     except Exception as e:
         print(f"An error occurred while reading the JSON file: {e}")
+        return None
     finally:
         if os.path.exists(report_path):
             os.remove(report_path)
-
-    return result.stdout
