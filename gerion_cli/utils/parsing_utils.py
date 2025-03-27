@@ -50,22 +50,37 @@ def generate_unique_id(strings):
 
 # Tools parsing functions
 def parse_secrets_tool_output(output, metadata):
-    # Parse the output and format it as needed
+    """
+    Parses the output of a secrets tool and formats it as a set of findings.
+
+    Args:
+        output: A list of dictionaries containing secret findings.
+        metadata: Metadata about the scan.
+
+    Returns:
+        A list of dictionaries representing the unique findings.
+    """    
     results = []
+    seen_finding_ids = set()
     for f in output:
         template = generate_finding_template(metadata)   
-        result = {
-            'finding_id': str(generate_unique_id([f['RuleID'], f['Description'], str(f['Secret']), f['File']])),
-            'title': f"Hard coded secret: {f['RuleID']}",
-            'description': f['Description'],
-            'mitigation': f"Remove the secret ({f['Secret']}) from the code and rotate it",
-            'severity': secrets_severity,
-            'security_scope': 'Code',
-            'scan_type': 'Secrets',
-            'file_path': f['File'],
-            'line_number': f['StartLine'],
-            'cwe': 798,
-        }
-        results.append({**template, **result})
+        finding_id = str(generate_unique_id([f['File'], str(f['Match']), f['RuleID']]))
+        
+        # Check if the finding_id has already been processed
+        if finding_id not in seen_finding_ids:
+            result = {
+                'finding_id': finding_id,
+                'title': f"Hard coded secret: {f['RuleID']}",
+                'description': f['Description'],
+                'mitigation': f"Remove the secret ({f['Secret']}) from the code and rotate it",
+                'severity': secrets_severity,
+                'security_scope': 'Code',
+                'scan_type': 'Secrets',
+                'file_path': f['File'],
+                'line_number': f['StartLine'],
+                'cwe': 798,
+            }
+            results.append({**template, **result})
+            seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
         
     return results
