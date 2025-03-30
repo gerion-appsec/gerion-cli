@@ -16,7 +16,7 @@ def get_metadata():
         }
     except Exception:
         metadata = {
-            "repository_name": os.path.relpath(os.getcwd()),
+            "repository_name": "local",
             "branch_name": "local",
             "build_id": "0",
             "code_path": os.path.relpath(os.getcwd()),
