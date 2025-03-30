@@ -2,16 +2,27 @@ import os
 import git
 
 def get_metadata():
-    repo = git.Repo()
-    commit = repo.head.commit
-    metadata = {
-        "repository_name":  os.path.basename(repo.working_dir),
-        "branch_name": repo.active_branch.name,
-        "build_id": 0,
-        "code_path": os.path.relpath(os.getcwd()),
-        "commit_hash": commit.hexsha,
-        "commit_author": commit.author.name
-    }
+    try:
+        repo = git.Repo()
+    
+        commit = repo.head.commit
+        metadata = {
+            "repository_name":  os.path.basename(repo.working_dir),
+            "branch_name": repo.active_branch.name,
+            "build_id": "0",
+            "code_path": repo.working_dir,
+            "commit_hash": commit.hexsha,
+            "commit_author": commit.author.name
+        }
+    except Exception:
+        metadata = {
+            "repository_name": os.path.relpath(os.getcwd()),
+            "branch_name": "local",
+            "build_id": "0",
+            "code_path": os.path.relpath(os.getcwd()),
+            "commit_hash": None,
+            "commit_author": None
+        }
 
     if os.getenv("GITHUB_SERVER_URL"):
         metadata["repository_name"] = os.getenv("GITHUB_REPOSITORY")
