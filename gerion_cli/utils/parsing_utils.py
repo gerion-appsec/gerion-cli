@@ -23,6 +23,7 @@ def generate_finding_template(metadata):
         'line_number': None,
         'component_name': None,
         'component_version': None,
+        'component_fix': None,
         'active': True,
         'mitigated': False,
         'false_positive': False,
@@ -81,9 +82,50 @@ def parse_secrets_tool_output(output, metadata):
                 'scan_type': 'Secrets',
                 'file_path': f['File'],
                 'line_number': f['StartLine'],
-                'cwe': 798,
+                'cwe': ['CWE-798'],
             }
             results.append({**template, **result})
             seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
+        
+    return results
+
+def parse_sca_tool_output(output, metadata):
+    """
+    Parses the output of a sca tool and formats it as a set of findings.
+
+    Args:
+        output: A list of dictionaries containing sca findings.
+        metadata: Metadata about the scan.
+
+    Returns:
+        A list of dictionaries representing the unique findings.
+    """    
+    results = []
+    seen_finding_ids = set()
+    for e in output:
+        if 'Vulnerabilities' in e:
+            for f in e['Vulnerabilities']:
+                template = generate_finding_template(metadata)   
+                finding_id = str(generate_unique_id([e['Target'], f['VulnerabilityID'], str(f['PkgID'])]))
+                
+                # Check if the finding_id has already been processed
+                if finding_id not in seen_finding_ids:
+                    result = {
+                        'finding_id': finding_id,
+                        'title': f"{f['VulnerabilityID']} - {f['PkgID']}",
+                        'description': f['Description'],
+                        'mitigation': f"Update the package {f['PkgID']} if it has fix. Status: {f['Status']}. Fixed in: {f['FixedVersion'] if 'FixedVersion' in f else 'No fix'}",
+                        'severity': f['Severity'],
+                        'security_scope': 'Code',
+                        'scan_type': 'SCA',
+                        'file_path': e['Target'],
+                        'component_name': f['PkgName'],
+                        'component_version': f['InstalledVersion'],
+                        'component_fix': f['FixedVersion'] if 'FixedVersion' in f else None,
+                        'cwe': f['CweIDs'] if 'CweIDs' in f else None,
+                        'cve': f['VulnerabilityID']
+                    }
+                    results.append({**template, **result})
+                    seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
         
     return results
