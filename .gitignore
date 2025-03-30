@@ -1,4 +1,18 @@
+# virtual envs
 gerion-cli-venv
+
+# env vars
 .env
+
+# Python cache
 __pycache__
+
+# Dependencies locks
+poetry.lock
+
+# Not desired outputs
 report.json
+output.json
+
+# tests
+tests/
