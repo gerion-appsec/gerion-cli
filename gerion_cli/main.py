@@ -2,7 +2,7 @@ import typer
 from gerion_cli.commands import secrets_scan, sca_scan
 
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 # Register commands
 app.add_typer(secrets_scan.app)

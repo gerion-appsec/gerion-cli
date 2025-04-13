@@ -16,3 +16,8 @@ output.json
 
 # tests
 tests/
+
+# dist
+dist/
+build/
+main.spec
