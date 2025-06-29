@@ -1,4 +1,3 @@
-
 # Stage 1: Builder stage to install Trivy and Gitleaks
 FROM alpine:latest AS builder
 
@@ -47,7 +46,7 @@ RUN set -eux && \
     poetry install && \
     pyinstaller --name gerion --distpath /usr/local/bin/ --onefile gerion_cli/main.py
 
-# Stage 2: Final stage with only Trivy and Gitleaks
+# Stage 3: Final stage with Trivy, Gitleaks and Gerion CLI
 FROM alpine:latest AS final
 
 # Copy only the necessary executables from the builder stage
@@ -58,7 +57,7 @@ COPY --from=cli-builder /usr/local/bin/gerion /usr/local/bin/gerion
 # Installing base software
 RUN apk add git
 
-# Define entrypoint to run Trivy by default (can be overridden)
+# Define entrypoint to run Gerion CLI by default (can be overridden)
 ENTRYPOINT ["/usr/local/bin/gerion"]
 
 # TO-DO: Specify the user to run the container process and set workspace (best practice for security)
