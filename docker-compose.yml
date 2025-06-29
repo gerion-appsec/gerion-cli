@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  gerion-secrets-scan:
+    build: .
+    volumes:
+      - .:/code
+      - ./output:/output
+    environment:
+      - GERION_API_URL=${GERION_API_URL:-}
+      - GERION_CLIENT_ID=${GERION_CLIENT_ID:-}
+      - GERION_CLIENT_SECRET=${GERION_CLIENT_SECRET:-}
+      # CI/CD Environment variables (will be passed through if available)
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-}
+      - GITHUB_REF_NAME=${GITHUB_REF_NAME:-}
+      - GITHUB_SHA=${GITHUB_SHA:-}
+      - GITHUB_RUN_ID=${GITHUB_RUN_ID:-}
+      - CI_PROJECT_NAME=${CI_PROJECT_NAME:-}
+      - CI_COMMIT_REF_NAME=${CI_COMMIT_REF_NAME:-}
+      - CI_COMMIT_SHA=${CI_COMMIT_SHA:-}
+      - CI_PIPELINE_ID=${CI_PIPELINE_ID:-}
+      - GIT_URL=${GIT_URL:-}
+      - GIT_BRANCH=${GIT_BRANCH:-}
+      - GIT_COMMIT=${GIT_COMMIT:-}
+      - BUILD_NUMBER=${BUILD_NUMBER:-}
+    command: ["secrets-scan", "/code"]
+    profiles:
+      - secrets
+
+  gerion-sca-scan:
+    build: .
+    volumes:
+      - .:/code
+      - ./output:/output
+    environment:
+      - GERION_API_URL=${GERION_API_URL:-}
+      - GERION_CLIENT_ID=${GERION_CLIENT_ID:-}
+      - GERION_CLIENT_SECRET=${GERION_CLIENT_SECRET:-}
+      # CI/CD Environment variables (will be passed through if available)
+      - GITHUB_REPOSITORY=${GITHUB_REPOSITORY:-}
+      - GITHUB_REF_NAME=${GITHUB_REF_NAME:-}
+      - GITHUB_SHA=${GITHUB_SHA:-}
+      - GITHUB_RUN_ID=${GITHUB_RUN_ID:-}
+      - CI_PROJECT_NAME=${CI_PROJECT_NAME:-}
+      - CI_COMMIT_REF_NAME=${CI_COMMIT_REF_NAME:-}
+      - CI_COMMIT_SHA=${CI_COMMIT_SHA:-}
+      - CI_PIPELINE_ID=${CI_PIPELINE_ID:-}
+      - GIT_URL=${GIT_URL:-}
+      - GIT_BRANCH=${GIT_BRANCH:-}
+      - GIT_COMMIT=${GIT_COMMIT:-}
+      - BUILD_NUMBER=${BUILD_NUMBER:-}
+    command: ["sca-scan", "/code"]
+    profiles:
+      - sca
+
+  gerion-secrets-scan-file:
+    build: .
+    volumes:
+      - .:/code
+      - ./output:/output
+    environment:
+      - GERION_API_URL=${GERION_API_URL:-}
+      - GERION_CLIENT_ID=${GERION_CLIENT_ID:-}
+      - GERION_CLIENT_SECRET=${GERION_CLIENT_SECRET:-}
+    command: ["secrets-scan", "/code", "--output-file", "/output/secrets_results.json", "--format", "json"]
+    profiles:
+      - secrets-file
+
+  gerion-sca-scan-file:
+    build: .
+    volumes:
+      - .:/code
+      - ./output:/output
+    environment:
+      - GERION_API_URL=${GERION_API_URL:-}
+      - GERION_CLIENT_ID=${GERION_CLIENT_ID:-}
+      - GERION_CLIENT_SECRET=${GERION_CLIENT_SECRET:-}
+    command: ["sca-scan", "/code", "--output-file", "/output/sca_results.json", "--format", "json"]
+    profiles:
+      - sca-file 
