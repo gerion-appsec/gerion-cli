@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "gerion-cli"
 version = "0.1.0"
-description = ""
+description = "A powerful command-line interface for performing security scans on your codebase"
 authors = ["gerion-appsec <info@gerion-appsec.com>"]
 readme = "README.md"
 
@@ -12,6 +12,9 @@ gerion-cli = "gerion_cli.main:app"
 python = "^3.12"
 typer = "^0.15.2"
 gitpython = "^3.1.44"
+httpx = "^0.27.0"
+rich = "^13.7.0"
+pydantic = "^2.6.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
