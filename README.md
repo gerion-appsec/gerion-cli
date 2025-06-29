@@ -12,21 +12,39 @@ A powerful command-line interface for performing security scans on your codebase
 - **Beautiful Logging**: Rich, formatted output with different log levels and progress indicators.
 - **Secure Credentials**: Uses SecretStr to protect sensitive information in logs.
 - **Well-Organized Architecture**: Clean, modular codebase with clear separation of concerns.
+- **Smart Repository Detection**: Automatically detects repository metadata from Git remotes (supports GitHub, GitLab, Bitbucket, and more).
+- **Docker Support**: Complete Docker image with all security tools included.
 
 ## Installation
 
-To install the Gerion CLI, you can use pip:
+### From Source
 
-```sh
-pip install gerion-cli
-```
-
-Alternatively, you can clone this repository and install it locally:
+Clone this repository and install it locally:
 
 ```sh
 git clone https://github.com/your-repo/gerion-cli.git
 cd gerion-cli
-pip install .
+pip install -r requirements.txt
+```
+
+### Using Poetry (Recommended for Development)
+
+```sh
+git clone https://github.com/your-repo/gerion-cli.git
+cd gerion-cli
+poetry install
+```
+
+### Using Docker (Recommended for Production)
+
+The Docker image includes all necessary security tools (Trivy and Gitleaks):
+
+```sh
+# Build the image
+docker build -t gerion-cli .
+
+# Or use the helper script
+./scripts/docker-run.sh --build
 ```
 
 ## Configuration
@@ -77,7 +95,14 @@ When saving results to a file, you can specify the output format:
 To perform a secrets scan on your codebase, run the following command:
 
 ```sh
-gerion-cli secrets-scan [OPTIONS] [CODE_PATH]
+# Using Python directly
+python -m gerion_cli.main secrets-scan [OPTIONS] [CODE_PATH]
+
+# Using Docker
+docker run --rm -v "$PWD:/code" gerion-cli secrets-scan /code
+
+# Using the helper script
+./scripts/docker-run.sh --type secrets --path ./src
 ```
 
 **Options:**
@@ -96,22 +121,28 @@ gerion-cli secrets-scan [OPTIONS] [CODE_PATH]
 export GERION_API_URL="https://api.gerion.com"
 export GERION_CLIENT_ID="your-client-id"
 export GERION_CLIENT_SECRET="your-client-secret"
-gerion-cli secrets-scan /path/to/code
+python -m gerion_cli.main secrets-scan /path/to/code
 
 # Using command-line parameters with debug logging
-gerion-cli secrets-scan --api-url https://api.gerion.com --client-id your-client-id --client-secret your-client-secret --log-level debug /path/to/code
+python -m gerion_cli.main secrets-scan --api-url https://api.gerion.com --client-id your-client-id --client-secret your-client-secret --log-level debug /path/to/code
 
 # Save results to JSON file (default format)
-gerion-cli secrets-scan --output-file scan_results.json /path/to/code
+python -m gerion_cli.main secrets-scan --output-file scan_results.json /path/to/code
 
 # Save results to Markdown file
-gerion-cli secrets-scan --output-file scan_report.md --format markdown /path/to/code
+python -m gerion_cli.main secrets-scan --output-file scan_report.md --format markdown /path/to/code
 
 # Save results to SARIF file
-gerion-cli secrets-scan --output-file scan_results.sarif --format sarif /path/to/code
+python -m gerion_cli.main secrets-scan --output-file scan_results.sarif --format sarif /path/to/code
 
 # Display results in console only (no credentials provided)
-gerion-cli secrets-scan /path/to/code
+python -m gerion_cli.main secrets-scan /path/to/code
+
+# Using Docker
+docker run --rm -v "$PWD:/code" gerion-cli secrets-scan /code
+
+# Using Docker with file output
+docker run --rm -v "$PWD:/code" -v "$PWD:/output" gerion-cli secrets-scan --output-file /output/results.md --format markdown /code
 ```
 
 ### Software Component Analysis (SCA)
@@ -119,7 +150,14 @@ gerion-cli secrets-scan /path/to/code
 To perform software component analysis on your codebase, run the following command:
 
 ```sh
-gerion-cli sca-scan [OPTIONS] [CODE_PATH]
+# Using Python directly
+python -m gerion_cli.main sca-scan [OPTIONS] [CODE_PATH]
+
+# Using Docker
+docker run --rm -v "$PWD:/code" gerion-cli sca-scan /code
+
+# Using the helper script
+./scripts/docker-run.sh --type sca --path ./src
 ```
 
 **Options:**
@@ -138,25 +176,53 @@ gerion-cli sca-scan [OPTIONS] [CODE_PATH]
 export GERION_API_URL="https://api.gerion.com"
 export GERION_CLIENT_ID="your-client-id"
 export GERION_CLIENT_SECRET="your-client-secret"
-gerion-cli sca-scan /path/to/code
+python -m gerion_cli.main sca-scan /path/to/code
 
 # Using command-line parameters with debug logging
-gerion-cli sca-scan --api-url https://api.gerion.com --client-id your-client-id --client-secret your-client-secret --log-level debug /path/to/code
+python -m gerion_cli.main sca-scan --api-url https://api.gerion.com --client-id your-client-id --client-secret your-client-secret --log-level debug /path/to/code
 
 # Save results to JSON file (default format)
-gerion-cli sca-scan --output-file scan_results.json /path/to/code
+python -m gerion_cli.main sca-scan --output-file scan_results.json /path/to/code
 
 # Save results to Markdown file
-gerion-cli sca-scan --output-file scan_report.md --format markdown /path/to/code
+python -m gerion_cli.main sca-scan --output-file scan_report.md --format markdown /path/to/code
 
 # Save results to SARIF file
-gerion-cli sca-scan --output-file scan_results.sarif --format sarif /path/to/code
+python -m gerion_cli.main sca-scan --output-file scan_results.sarif --format sarif /path/to/code
 
 # Display results in console only (no credentials provided)
-gerion-cli sca-scan /path/to/code
+python -m gerion_cli.main sca-scan /path/to/code
+
+# Using Docker
+docker run --rm -v "$PWD:/code" gerion-cli sca-scan /code
+
+# Using Docker with file output
+docker run --rm -v "$PWD:/code" -v "$PWD:/output" gerion-cli sca-scan --output-file /output/results.json --format json /code
 ```
 
 ## Output Format Examples
+
+### Console Output
+
+The CLI displays results in clean, formatted tables:
+
+**Secrets Scan:**
+```
+┌──────────┬──────────────────────────────────────────────────┬───────────────────┐
+│ Severity │ Title                                            │ File:Line         │
+├──────────┼──────────────────────────────────────────────────┼───────────────────┤
+│ 🔴 High  │ Hard coded secret: AWS_ACCESS_KEY_ID            │ config.py:42     │
+└──────────┴──────────────────────────────────────────────────┴───────────────────┘
+```
+
+**SCA Scan:**
+```
+┌──────────┬───────────────┬────────────────────────────────────┬───────────────────┐
+│ Severity │ CVE           │ Component                           │ File              │
+├──────────┼───────────────┼────────────────────────────────────┼───────────────────┤
+│ 🔴 High  │ CVE-2021-33503│ requests 2.25.1                    │ requirements.txt  │
+└──────────┴───────────────┴────────────────────────────────────┴───────────────────┘
+```
 
 ### JSON Format
 ```json
@@ -278,6 +344,155 @@ gerion_cli/
     └── __init__.py
 ```
 
+## Docker Usage
+
+### Building the Docker Image
+
+You can build the Docker image locally with all necessary security tools included:
+
+```sh
+# Build the image with default tool versions
+docker build -t gerion-cli .
+
+# Build with specific tool versions
+docker build \
+  --build-arg TRIVY_VERSION=0.61.0 \
+  --build-arg GITLEAKS_VERSION=8.24.2 \
+  -t gerion-cli .
+```
+
+### Running with Docker
+
+The Docker image includes Trivy and Gitleaks, so you don't need to install them separately.
+
+#### Basic Usage
+
+```sh
+# Mount your code directory and run a scan
+docker run --rm -v "$PWD:/code" gerion-cli secrets-scan /code
+docker run --rm -v "$PWD:/code" gerion-cli sca-scan /code
+```
+
+#### With API Integration
+
+```sh
+# Using environment variables (recommended for security)
+docker run --rm \
+  -e GERION_API_URL="https://api.gerion.com" \
+  -e GERION_CLIENT_ID="your-client-id" \
+  -e GERION_CLIENT_SECRET="your-client-secret" \
+  -v "$PWD:/code" \
+  gerion-cli secrets-scan /code
+
+# Using command-line parameters
+docker run --rm \
+  -v "$PWD:/code" \
+  gerion-cli secrets-scan \
+  --api-url https://api.gerion.com \
+  --client-id your-client-id \
+  --client-secret your-client-secret \
+  /code
+```
+
+#### Saving Results to Files
+
+```sh
+# Save results to different formats
+docker run --rm \
+  -v "$PWD:/code" \
+  -v "$PWD:/output" \
+  gerion-cli secrets-scan \
+  --output-file /output/results.md \
+  --format markdown \
+  /code
+```
+
+### Troubleshooting Rich Display Issues
+
+If you experience issues with table formatting or colors in Docker, try these solutions:
+
+#### Option 1: Use Interactive Terminal
+
+```sh
+# Run with interactive terminal for better display
+docker run --rm -it -v "$PWD:/code" gerion-cli secrets-scan /code
+```
+
+#### Option 2: Set Terminal Environment Variables
+
+```sh
+# Set terminal variables for better compatibility
+docker run --rm \
+  -e TERM=xterm-256color \
+  -e FORCE_COLOR=1 \
+  -e PYTHONUNBUFFERED=1 \
+  -v "$PWD:/code" \
+  gerion-cli secrets-scan /code
+```
+
+#### Option 3: Use the Helper Script with Interactive Mode
+
+```sh
+# The helper script automatically sets the correct environment variables
+./scripts/docker-run.sh --type secrets --interactive
+```
+
+### Docker Helper Script
+
+For convenience, a helper script is provided to simplify Docker usage:
+
+```sh
+# Make the script executable
+chmod +x scripts/docker-run.sh
+
+# Basic usage
+./scripts/docker-run.sh --type secrets --path ./src
+
+# Save results to file
+./scripts/docker-run.sh --type sca --output results.json --format json
+
+# Run with debug logging
+./scripts/docker-run.sh --type secrets --log-level debug
+
+# Run with interactive terminal for better display
+./scripts/docker-run.sh --type secrets --interactive
+
+# Build image and run
+./scripts/docker-run.sh --type secrets --build
+
+# Show help
+./scripts/docker-run.sh --help
+```
+
+The script automatically:
+- Checks if Docker is available
+- Builds the image if it doesn't exist
+- Handles volume mounting and environment variables
+- Passes through CI/CD environment variables
+- Sets proper terminal environment variables for Rich
+- Provides colored output and error handling
+
+### Docker Compose
+
+You can also use Docker Compose for more complex setups:
+
+```sh
+# Create output directory
+mkdir -p output
+
+# Run secrets scan (sends to API if credentials provided)
+docker-compose --profile secrets up --build
+
+# Run SCA scan (sends to API if credentials provided)
+docker-compose --profile sca up --build
+
+# Run secrets scan and save to file
+docker-compose --profile secrets-file up --build
+
+# Run SCA scan and save to file
+docker-compose --profile sca-file up --build
+```
+
 ## Development
 
 ### Contributing
@@ -293,6 +508,7 @@ We welcome contributions from the community! To get started:
 ### Requirements
 
 - Python 3.12 or higher
+- Poetry (for dependency management)
 - Typer
 - GitPython
 - HTTPX
@@ -313,6 +529,10 @@ We welcome contributions from the community! To get started:
 2. Install dependencies:
 
     ```sh
+    # Using Poetry (recommended)
+    poetry install
+    
+    # Or using pip
     pip install -r requirements.txt
     ```
 
@@ -329,9 +549,26 @@ We welcome contributions from the community! To get started:
 5. Run the CLI locally:
 
     ```sh
+    # Using Poetry
+    poetry run python -m gerion_cli.main secrets-scan /path/to/code
+    poetry run python -m gerion_cli.main sca-scan /path/to/code
+    
+    # Or using Python directly
     python -m gerion_cli.main secrets-scan /path/to/code
     python -m gerion_cli.main sca-scan /path/to/code
     ```
+
+### Testing
+
+Run the Docker test suite to verify everything works:
+
+```sh
+# Run comprehensive tests
+./scripts/test-docker.sh
+
+# Clean up test artifacts
+./scripts/test-docker.sh --clean
+```
 
 ### Architecture Principles
 
@@ -340,21 +577,7 @@ We welcome contributions from the community! To get started:
 - **Modular Design**: Easy to extend with new tools or output formats
 - **Type Safety**: Uses type hints and Pydantic for data validation
 - **Security First**: Secure handling of credentials and sensitive data
-
-## Docker Usage
-
-You can also use the provided Docker image which includes all necessary tools:
-
-```sh
-# Using environment variables
-docker run --rm -e GERION_API_URL="https://api.gerion.com" -e GERION_CLIENT_ID="your-client-id" -e GERION_CLIENT_SECRET="your-client-secret" -v "$PWD:/code" gerion-cli secrets-scan /code
-
-# Using command-line parameters
-docker run --rm -v "$PWD:/code" gerion-cli secrets-scan --api-url https://api.gerion.com --client-id your-client-id --client-secret your-client-secret /code
-
-# Save results to different formats
-docker run --rm -v "$PWD:/code" gerion-cli secrets-scan --output-file results.md --format markdown /code
-```
+- **Robust Parsing**: Handles different output formats from security tools gracefully
 
 ## License
 
