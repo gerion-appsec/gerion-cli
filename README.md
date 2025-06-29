@@ -8,10 +8,10 @@ A powerful command-line interface for performing security scans on your codebase
 - **Software Component Analysis (SCA)**: Identify vulnerabilities in your project's dependencies.
 - **API Integration**: Send scan results to a specified API for further processing or storage.
 - **Multiple Output Formats**: Save scan results in JSON, Markdown, or SARIF formats.
-- **JSON Output**: Save scan results to a JSON file for easy integration with other tools.
 - **CI/CD Integration**: Automatic detection of GitHub Actions, Jenkins, and GitLab CI environments.
 - **Beautiful Logging**: Rich, formatted output with different log levels and progress indicators.
 - **Secure Credentials**: Uses SecretStr to protect sensitive information in logs.
+- **Well-Organized Architecture**: Clean, modular codebase with clear separation of concerns.
 
 ## Installation
 
@@ -69,7 +69,7 @@ The CLI supports different logging levels to control the verbosity of output:
 When saving results to a file, you can specify the output format:
 
 - `json`: JSON format (default) - Structured data for programmatic processing
-- `markdown`: Markdown format - Human-readable report with formatting
+- `markdown`: Markdown format - Human-readable report with tables and formatting
 - `sarif`: SARIF format - Standard format for static analysis results
 
 ### Secrets Scan
@@ -194,7 +194,13 @@ gerion-cli sca-scan /path/to/code
 
 ## Findings
 
-### 🔴 Finding 1: Hard coded secret: AWS_ACCESS_KEY_ID
+| Severity | Title | File:Line |
+|----------|-------|-----------|
+| 🔴 High | Hard coded secret: AWS_ACCESS_KEY_ID | `config.py:42` |
+
+## Detailed Findings
+
+### 🔴 Hard coded secret: AWS_ACCESS_KEY_ID
 
 - **Severity**: High
 - **File**: `config.py:42`
@@ -242,6 +248,34 @@ gerion-cli sca-scan /path/to/code
         }
     ]
 }
+```
+
+## Project Structure
+
+The Gerion CLI follows a clean, modular architecture:
+
+```
+gerion_cli/
+├── main.py                    # Main entry point
+├── commands/                  # CLI commands
+│   ├── secrets_scan.py       # Secrets scanning command
+│   └── sca_scan.py           # SCA scanning command
+├── core/                      # Core functionality
+│   ├── logging.py            # Logging and enums
+│   ├── types.py              # Custom types (SecretString)
+│   └── metadata.py           # Repository metadata handling
+├── tools/                     # Security tools integration
+│   ├── sca.py               # Trivy integration
+│   ├── secrets.py           # Gitleaks integration
+│   └── parser.py            # Results parsing
+├── api/                       # API integration
+│   ├── client.py            # HTTP client
+│   └── auth.py              # JWT authentication
+├── output/                    # Output generation
+│   ├── formats.py           # File formats (JSON, Markdown, SARIF)
+│   └── tables.py            # Console tables
+└── utils/                     # General utilities
+    └── __init__.py
 ```
 
 ## Development
@@ -298,6 +332,14 @@ We welcome contributions from the community! To get started:
     python -m gerion_cli.main secrets-scan /path/to/code
     python -m gerion_cli.main sca-scan /path/to/code
     ```
+
+### Architecture Principles
+
+- **Separation of Concerns**: Each module has a specific responsibility
+- **Clean Imports**: Uses absolute imports for better maintainability
+- **Modular Design**: Easy to extend with new tools or output formats
+- **Type Safety**: Uses type hints and Pydantic for data validation
+- **Security First**: Secure handling of credentials and sensitive data
 
 ## Docker Usage
 
