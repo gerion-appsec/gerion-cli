@@ -33,10 +33,9 @@ def findings_table(findings: List[Dict], scan_type: str = "Security"):
     
     # Add columns based on scan type
     if scan_type == "Secrets":
-        table.add_column("Severity", style="bold", width=8)
-        table.add_column("Title", style="bold", width=35)
-        table.add_column("File:Line", style="cyan", width=25)
-        table.add_column("Description", width=45)
+        table.add_column("Severity", style="bold")
+        table.add_column("Title", style="bold")
+        table.add_column("File:Line", style="cyan")
         
         for finding in sorted_findings:
             severity = finding.get('severity', 'Info')
@@ -53,16 +52,14 @@ def findings_table(findings: List[Dict], scan_type: str = "Security"):
             table.add_row(
                 f"[{severity_color}]{severity_normalized}[/{severity_color}]",
                 finding.get('title', 'N/A'),
-                f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}",
-                finding.get('description', 'N/A')[:42] + "..." if len(finding.get('description', '')) > 45 else finding.get('description', 'N/A')
+                f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}"
             )
     
     else:  # SCA
-        table.add_column("Severity", style="bold", width=8)
-        table.add_column("CVE", style="bold", width=15)
-        table.add_column("Component", style="cyan", width=30)
-        table.add_column("File", style="cyan", width=25)
-        table.add_column("Description", width=35)
+        table.add_column("Severity", style="bold")
+        table.add_column("CVE", style="bold")
+        table.add_column("Component", style="cyan")
+        table.add_column("File", style="cyan")
         
         for finding in sorted_findings:
             severity = finding.get('severity', 'Info')
@@ -82,8 +79,7 @@ def findings_table(findings: List[Dict], scan_type: str = "Security"):
                 f"[{severity_color}]{severity_normalized}[/{severity_color}]",
                 finding.get('cve', 'N/A'),
                 component,
-                finding.get('file_path', 'N/A'),
-                finding.get('description', 'N/A')[:32] + "..." if len(finding.get('description', '')) > 35 else finding.get('description', 'N/A')
+                finding.get('file_path', 'N/A')
             )
     
     console.print(table) 
