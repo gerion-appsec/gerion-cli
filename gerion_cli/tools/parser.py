@@ -70,21 +70,29 @@ def parse_secrets_tool_output(output, metadata):
     results = []
     seen_finding_ids = set()
     for f in output:
+        # Get fields safely - try different possible field names
+        file_path = f.get('File') or f.get('file') or f.get('file_path') or 'unknown'
+        match_text = f.get('Match') or f.get('match') or f.get('secret') or 'unknown'
+        rule_id = f.get('RuleID') or f.get('rule_id') or f.get('rule') or 'unknown'
+        description = f.get('Description') or f.get('description') or 'No description available'
+        secret_value = f.get('Secret') or f.get('secret') or f.get('match') or 'unknown'
+        start_line = f.get('StartLine') or f.get('start_line') or f.get('line') or 0
+        
         template = generate_finding_template(metadata)   
-        finding_id = str(generate_unique_id([f['File'], str(f['Match']), f['RuleID']]))
+        finding_id = str(generate_unique_id([file_path, str(match_text), rule_id]))
         
         # Check if the finding_id has already been processed
         if finding_id not in seen_finding_ids:
             result = {
                 'finding_id': finding_id,
-                'title': f"Hard coded secret: {f['RuleID']}",
-                'description': f['Description'],
-                'mitigation': f"Remove the secret ({f['Secret']}) from the code and rotate it",
+                'title': f"Hard coded secret: {rule_id}",
+                'description': description,
+                'mitigation': f"Remove the secret ({secret_value}) from the code and rotate it",
                 'severity': secrets_severity,
                 'security_scope': 'Code',
                 'scan_type': 'Secrets',
-                'file_path': f['File'],
-                'line_number': f['StartLine'],
+                'file_path': file_path,
+                'line_number': start_line,
                 'cwe': ['CWE-798'],
             }
             results.append({**template, **result})
@@ -105,28 +113,39 @@ def parse_sca_tool_output(output, metadata):
     """    
     results = []
     seen_finding_ids = set()
+    
     for e in output:
         if 'Vulnerabilities' in e:
             for f in e['Vulnerabilities']:
+                # Get package ID safely - try different possible field names
+                pkg_id = f.get('PkgID') or f.get('PackageID') or f.get('Package') or f.get('PkgName', 'unknown')
+                pkg_name = f.get('PkgName') or f.get('Package') or pkg_id
+                installed_version = f.get('InstalledVersion') or f.get('Version') or 'unknown'
+                vulnerability_id = f.get('VulnerabilityID') or f.get('CVE') or 'unknown'
+                description = f.get('Description') or 'No description available'
+                severity = f.get('Severity') or 'Unknown'
+                status = f.get('Status') or 'Unknown'
+                fixed_version = f.get('FixedVersion') or f.get('FixVersion')
+                
                 template = generate_finding_template(metadata)   
-                finding_id = str(generate_unique_id([e['Target'], f['VulnerabilityID'], str(f['PkgID'])]))
+                finding_id = str(generate_unique_id([e.get('Target', 'unknown'), vulnerability_id, str(pkg_id)]))
                 
                 # Check if the finding_id has already been processed
                 if finding_id not in seen_finding_ids:
                     result = {
                         'finding_id': finding_id,
-                        'title': f"{f['VulnerabilityID']} - {f['PkgID']}",
-                        'description': f['Description'],
-                        'mitigation': f"Update the package {f['PkgID']} if it has fix. Status: {f['Status']}. Fixed in: {f['FixedVersion'] if 'FixedVersion' in f else 'No fix'}",
-                        'severity': f['Severity'],
+                        'title': f"{vulnerability_id} - {pkg_name}",
+                        'description': description,
+                        'mitigation': f"Update the package {pkg_name} if it has fix. Status: {status}. Fixed in: {fixed_version if fixed_version else 'No fix'}",
+                        'severity': severity,
                         'security_scope': 'Code',
                         'scan_type': 'SCA',
-                        'file_path': e['Target'],
-                        'component_name': f['PkgName'],
-                        'component_version': f['InstalledVersion'],
-                        'component_fix': f['FixedVersion'] if 'FixedVersion' in f else None,
-                        'cwe': f['CweIDs'] if 'CweIDs' in f else None,
-                        'cve': f['VulnerabilityID']
+                        'file_path': e.get('Target', 'unknown'),
+                        'component_name': pkg_name,
+                        'component_version': installed_version,
+                        'component_fix': fixed_version,
+                        'cwe': f.get('CweIDs') if 'CweIDs' in f else None,
+                        'cve': vulnerability_id
                     }
                     results.append({**template, **result})
                     seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
