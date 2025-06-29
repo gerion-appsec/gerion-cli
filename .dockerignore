@@ -1,0 +1,76 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+tests/
+*.md
+!README.md
+LICENSE
+NOTICE
+env.example
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+# Build artifacts
+dist/
+build/
+*.spec
+*.egg-info/
+
+# Dependencies locks (will be regenerated in Docker build)
+poetry.lock
+
+# Temporary files
+*.tmp
+*.temp
+report.json
+output.json
+gerion-cli-*.json 

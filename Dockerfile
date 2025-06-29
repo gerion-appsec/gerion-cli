@@ -1,7 +1,6 @@
 # Stage 1: Builder stage to install Trivy and Gitleaks
 FROM alpine:latest AS builder
 
-
 # Define versions as build arguments with default values for flexibility
 ARG TRIVY_VERSION=0.61.0
 ARG GITLEAKS_VERSION=8.24.2
@@ -32,36 +31,55 @@ RUN set -eux && \
     tar -xzvf /tmp/gitleaks.tar.gz -C /usr/local/bin/ gitleaks && \
     rm /tmp/gitleaks.tar.gz
 
-# Stage 2: Builder stage to Gerion cli
+# Stage 2: Builder stage for Gerion CLI
 FROM python:3.13-alpine AS cli-builder
-ADD . /gerion_cli/
+
+# Copy the entire project
+COPY . /gerion_cli/
 WORKDIR /gerion_cli
 
-# Install Gerion cli
+# Install Gerion CLI
 RUN set -eux && \
     apk add binutils && \
     python -m venv venv && \
     source venv/bin/activate && \
     pip install pyinstaller poetry && \
+    # Regenerate lock file if needed and install dependencies
+    poetry lock && \
     poetry install && \
     pyinstaller --name gerion --distpath /usr/local/bin/ --onefile gerion_cli/main.py
 
 # Stage 3: Final stage with Trivy, Gitleaks and Gerion CLI
 FROM alpine:latest AS final
 
-# Copy only the necessary executables from the builder stage
+# Copy only the necessary executables from the builder stages
 COPY --from=builder /usr/local/bin/trivy /usr/local/bin/trivy
 COPY --from=builder /usr/local/bin/gitleaks /usr/local/bin/gitleaks
 COPY --from=cli-builder /usr/local/bin/gerion /usr/local/bin/gerion
 
-# Installing base software
-RUN apk add git
+# Install base software and create non-root user
+RUN set -eux && \
+    apk add --no-cache git bash ncurses && \
+    addgroup -g 1000 gerion && \
+    adduser -D -s /bin/bash -u 1000 -G gerion gerion
+
+# Create working directory and set permissions
+RUN mkdir -p /code /output && \
+    chown -R gerion:gerion /code /output
+
+# Set working directory
+WORKDIR /code
+
+# Set environment variables for better terminal support
+ENV TERM=xterm-256color
+ENV PYTHONUNBUFFERED=1
+ENV FORCE_COLOR=1
+
+# Switch to non-root user for security
+USER gerion
 
 # Define entrypoint to run Gerion CLI by default (can be overridden)
 ENTRYPOINT ["/usr/local/bin/gerion"]
 
-# TO-DO: Specify the user to run the container process and set workspace (best practice for security)
-# When running the container, you can use the `--user` flag:
-# docker run --rm --user=1000:1000 -v "$PWD:/code" security-tools fs /code
-# or define a user in a base image like alpine in the final stage if needed.
-# USER nonroot
+# Default command (can be overridden)
+CMD ["--help"]
