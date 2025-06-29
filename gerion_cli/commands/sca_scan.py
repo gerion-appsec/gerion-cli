@@ -1,12 +1,13 @@
 import typer
 from typing_extensions import Annotated
-from gerion_cli.utils.metadata_utils import get_metadata
-from gerion_cli.utils.sca_tool_utils import run_sca_tool
-from gerion_cli.utils.parsing_utils import parse_sca_tool_output
-from gerion_cli.utils.aux_utils import send_to_api
-from gerion_cli.utils.output_formats import save_to_file
-from gerion_cli.utils.logging_utils import LogLevel, OutputFormat, set_log_level, info, warning, error, success, panel, debug, findings_table
-from gerion_cli.utils.secret_types import SecretString
+from gerion_cli.core.metadata import get_metadata
+from gerion_cli.tools.sca import run_sca_tool
+from gerion_cli.tools.parser import parse_sca_tool_output
+from gerion_cli.api.client import send_to_api
+from gerion_cli.output.formats import save_to_file
+from gerion_cli.core.logging import LogLevel, OutputFormat, set_log_level, info, warning, error, success, panel, debug
+from gerion_cli.output.tables import findings_table
+from gerion_cli.core.types import SecretString
 
 app = typer.Typer()
 
