@@ -1,44 +1,74 @@
-# Git
+# =====================
+# Version Control
+# =====================
 .git
 .gitignore
 
-# Python
-__pycache__
+# =====================
+# Python Artifacts
+# =====================
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-env
-pip-log.txt
-pip-delete-this-directory.txt
-.tox
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.git
-.mypy_cache
-.pytest_cache
-.hypothesis
 
-# Virtual environments
+# =====================
+# Virtual Environments
+# =====================
 venv/
 env/
 ENV/
 env.bak/
 venv.bak/
+gerion-cli-venv/
 
-# IDE
+# =====================
+# Python Tools & Caches
+# =====================
+.tox
+.coverage
+.coverage.*
+.cache
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# =====================
+# Test & Build Artifacts
+# =====================
+tests/
+dist/
+build/
+*.egg-info/
+*.spec
+
+# =====================
+# Logs & Reports
+# =====================
+pip-log.txt
+pip-delete-this-directory.txt
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+report.json
+output.json
+gerion-cli-*.json
+
+# =====================
+# Dependency Locks (regenerated in Docker build)
+# =====================
+poetry.lock
+
+# =====================
+# Editor & OS Files
+# =====================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 .DS_Store?
 ._*
@@ -47,30 +77,23 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Project specific
-tests/
+# =====================
+# Documentation (except README.md)
+# =====================
 *.md
 !README.md
+
+# =====================
+# Project Metadata
+# =====================
 LICENSE
 NOTICE
 env.example
-.gitignore
+.env
+
+# =====================
+# Docker & Compose
+# =====================
 .dockerignore
 Dockerfile
-docker-compose.yml
-
-# Build artifacts
-dist/
-build/
-*.spec
-*.egg-info/
-
-# Dependencies locks (will be regenerated in Docker build)
-poetry.lock
-
-# Temporary files
-*.tmp
-*.temp
-report.json
-output.json
-gerion-cli-*.json 
+docker-compose.yml 
