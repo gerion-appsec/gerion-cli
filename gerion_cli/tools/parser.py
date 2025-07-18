@@ -151,3 +151,44 @@ def parse_sca_tool_output(output, metadata):
                     seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
         
     return results 
+
+def parse_iac_tool_output(output, metadata):
+    """
+    Parses the output of a Trivy IaC scan and formats it as a set of findings.
+    Args:
+        output: A list of dictionaries containing IaC findings.
+        metadata: Metadata about the scan.
+    Returns:
+        A list of dictionaries representing the unique findings.
+    """
+    results = []
+    seen_finding_ids = set()
+    for e in output:
+        if 'Misconfigurations' in e:
+            for f in e['Misconfigurations']:
+                id_str = f.get('ID') or f.get('RuleID') or f.get('AVDID') or 'unknown'
+                title = f.get('Title') or f.get('ID') or 'IaC Misconfiguration'
+                description = f.get('Description') or 'No description available'
+                severity = f.get('Severity') or 'Unknown'
+                status = f.get('Status') or 'Unknown'
+                file_path = e.get('Target', 'unknown')
+                line = f.get('StartLine') or f.get('Line') or 0
+                template = generate_finding_template(metadata)
+                finding_id = str(generate_unique_id([file_path, id_str, title]))
+                if finding_id not in seen_finding_ids:
+                    result = {
+                        'finding_id': finding_id,
+                        'title': title,
+                        'description': description,
+                        'mitigation': f.get('Resolution') or f.get('Message') or 'See documentation.',
+                        'severity': severity,
+                        'security_scope': 'IaC',
+                        'scan_type': 'IaC',
+                        'file_path': file_path,
+                        'line_number': line,
+                        'cwe': f.get('CWE', None),
+                        'cve': None
+                    }
+                    results.append({**template, **result})
+                    seen_finding_ids.add(finding_id)
+    return results 

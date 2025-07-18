@@ -54,7 +54,27 @@ def findings_table(findings: List[Dict], scan_type: str = "Security"):
                 finding.get('title', 'N/A'),
                 f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}"
             )
-    
+    elif scan_type == "IaC":
+        table.add_column("Severity", style="bold")
+        table.add_column("ID/Title", style="bold")
+        table.add_column("File:Line", style="cyan")
+        table.add_column("Status", style="magenta")
+        for finding in sorted_findings:
+            severity = finding.get('severity', 'Info')
+            severity_normalized = severity.capitalize()
+            severity_color = {
+                'Critical': 'bright_black',
+                'High': 'red',
+                'Medium': 'yellow',
+                'Low': 'green',
+                'Info': 'blue'
+            }.get(severity_normalized, 'white')
+            table.add_row(
+                f"[{severity_color}]{severity_normalized}[/{severity_color}]",
+                finding.get('title', 'N/A'),
+                f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}",
+                finding.get('mitigation', 'N/A')[:40]  # Show first 40 chars of mitigation/status
+            )
     else:  # SCA
         table.add_column("Severity", style="bold")
         table.add_column("CVE", style="bold")
