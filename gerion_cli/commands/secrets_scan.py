@@ -14,37 +14,26 @@ app = typer.Typer()
 @app.command()
 def secrets_scan(
     code_path: Annotated[str, typer.Argument()] = ".",
-    api_url: str = typer.Option(None, envvar="GERION_API_URL", help="API URL for sending results"),
-    client_id: str = typer.Option(None, envvar="GERION_CLIENT_ID", help="Client ID for API authentication"),
-    client_secret: str = typer.Option(None, envvar="GERION_CLIENT_SECRET", hide_input=True, help="Client secret for API authentication"),
-    output_file: str = typer.Option(None, help="Save results to a file (disables API sending)"),
-    format: OutputFormat = typer.Option(OutputFormat.JSON, help="Output format for file saving"),
-    log_level: LogLevel = typer.Option(LogLevel.INFO, help="Set the logging level")
+    api_url: str = typer.Option(None, "--api-url", "-a", envvar="GERION_API_URL", help="API URL for sending results"),
+    client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help="Client ID for API authentication"),
+    client_secret: str = typer.Option(None, "--client-secret", "-s", envvar="GERION_CLIENT_SECRET", hide_input=True, help="Client secret for API authentication"),
+    output_file: str = typer.Option(None, "--output-file", "-o", help="Save results to a file (disables API sending)"),
+    format: OutputFormat = typer.Option(OutputFormat.JSON, "--format", "-f", help="Output format for file saving"),
+    log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
-    # Set log level
     set_log_level(log_level)
-    
-    # Convert client_secret to SecretString
     secret_string = SecretString.from_typer_option(client_secret)
-    
     info("Starting secrets scan...")
     debug(f"Scanning code path: {code_path}")
-    
     metadata = get_metadata()
     debug("Metadata collected successfully")
-    
     info("Running Gitleaks scan...")
     secrets_tool_output = run_secrets_tool(code_path)
-    
     if secrets_tool_output is None:
         error("Failed to run secrets scan")
         raise typer.Exit(1)
-    
     info(f"Found {len(secrets_tool_output)} potential secrets")
-    
     results = {'metadata':metadata, 'findings': parse_secrets_tool_output(secrets_tool_output, metadata)}
-    
-    # Display scan summary
     panel(
         "Secrets Scan Summary",
         f"Repository: {metadata['repository_name']}\n"
@@ -53,20 +42,15 @@ def secrets_scan(
         f"Findings: {len(results['findings'])}",
         "blue"
     )
-
-    # If output_file is specified, save to file and don't send to API
     if output_file:
         save_to_file(results, output_file, format)
         debug("Results saved to file. API sending disabled when output file is specified.")
-    # Otherwise, try to send to API (credentials from env vars or parameters)
     else:
         if not all([api_url, client_id, secret_string]):
             warning("No API credentials provided. Results will be displayed in console only.")
-            # Display findings in table format
             findings_table(results['findings'], "Secrets")
         else:
             success = send_to_api(results, api_url, client_id, secret_string)
             if not success:
                 warning("Results will be displayed in console only.")
-                # Display findings in table format
                 findings_table(results['findings'], "Secrets")

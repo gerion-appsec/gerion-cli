@@ -14,12 +14,12 @@ app = typer.Typer()
 @app.command()
 def iac_scan(
     code_path: Annotated[str, typer.Argument()] = ".",
-    api_url: str = typer.Option(None, envvar="GERION_API_URL", help="API URL for sending results"),
-    client_id: str = typer.Option(None, envvar="GERION_CLIENT_ID", help="Client ID for API authentication"),
-    client_secret: str = typer.Option(None, envvar="GERION_CLIENT_SECRET", hide_input=True, help="Client secret for API authentication"),
-    output_file: str = typer.Option(None, help="Save results to a file (disables API sending)"),
-    format: OutputFormat = typer.Option(OutputFormat.JSON, help="Output format for file saving"),
-    log_level: LogLevel = typer.Option(LogLevel.INFO, help="Set the logging level")
+    api_url: str = typer.Option(None, "--api-url", "-a", envvar="GERION_API_URL", help="API URL for sending results"),
+    client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help="Client ID for API authentication"),
+    client_secret: str = typer.Option(None, "--client-secret", "-s", envvar="GERION_CLIENT_SECRET", hide_input=True, help="Client secret for API authentication"),
+    output_file: str = typer.Option(None, "--output-file", "-o", help="Save results to a file (disables API sending)"),
+    format: OutputFormat = typer.Option(OutputFormat.JSON, "--format", "-f", help="Output format for file saving"),
+    log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     set_log_level(log_level)
     secret_string = SecretString.from_typer_option(client_secret)
