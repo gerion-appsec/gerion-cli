@@ -172,7 +172,35 @@ def parse_iac_tool_output(output, metadata):
                 severity = f.get('Severity') or 'Unknown'
                 status = f.get('Status') or 'Unknown'
                 file_path = e.get('Target', 'unknown')
+                # First try to get StartLine/Line from the root level
                 line = f.get('StartLine') or f.get('Line') or 0
+                
+                # If not found at root level, try inside CauseMetadata
+                # Trivy sometimes returns StartLine and EndLine inside CauseMetadata
+                # The structure is: Misconfigurations[].CauseMetadata.StartLine
+                if line == 0:
+                    cause_metadata = f.get('CauseMetadata', {})
+                    if cause_metadata and isinstance(cause_metadata, dict):
+                        # Try different possible field names for StartLine
+                        if 'StartLine' in cause_metadata:
+                            line = cause_metadata['StartLine']
+                        elif 'start_line' in cause_metadata:
+                            line = cause_metadata['start_line']
+                        elif 'startLine' in cause_metadata:
+                            line = cause_metadata['startLine']
+                        elif 'Line' in cause_metadata:
+                            line = cause_metadata['Line']
+                        elif 'line' in cause_metadata:
+                            line = cause_metadata['line']
+                
+                # Convert to int if it's a string or number, or use None if not found (0 means not found)
+                if line == 0:
+                    line = None
+                elif line is not None:
+                    try:
+                        line = int(line)
+                    except (ValueError, TypeError):
+                        line = None
                 template = generate_finding_template(metadata)
                 finding_id = str(generate_unique_id([file_path, id_str, title]))
                 if finding_id not in seen_finding_ids:
