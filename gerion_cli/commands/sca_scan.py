@@ -45,7 +45,7 @@ def sca_scan(
     effective_client_id = client_id or CLIENT_ID
     info("Starting SCA scan...")
     debug(f"Scanning code path: {code_path}")
-    metadata = get_metadata()
+    metadata = get_metadata(code_path=code_path)
     metadata['scan_type'] = 'SCA'
     debug("Metadata collected successfully")
     info("Running Trivy scan...")
