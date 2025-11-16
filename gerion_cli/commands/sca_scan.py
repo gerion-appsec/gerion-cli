@@ -1,5 +1,4 @@
 import typer
-from typing_extensions import Annotated
 from gerion_cli.core.metadata import get_metadata
 from gerion_cli.tools.sca import run_sca_tool
 from gerion_cli.tools.parser import parse_sca_tool_output
@@ -8,24 +7,46 @@ from gerion_cli.output.formats import save_to_file
 from gerion_cli.core.logging import LogLevel, OutputFormat, set_log_level, info, warning, error, success, panel, debug
 from gerion_cli.output.tables import findings_table
 from gerion_cli.core.types import SecretString
+from gerion_cli.core.config import CLIENT_ID
 
-app = typer.Typer()
 
-@app.command()
 def sca_scan(
-    code_path: Annotated[str, typer.Argument()] = ".",
-    api_url: str = typer.Option(None, "--api-url", "-a", envvar="GERION_API_URL", help="API URL for sending results"),
-    client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help="Client ID for API authentication"),
-    client_secret: str = typer.Option(None, "--client-secret", "-s", envvar="GERION_CLIENT_SECRET", hide_input=True, help="Client secret for API authentication"),
+    code_path: str = typer.Argument(".", help="Path to the code directory to scan", show_default=True),
+    api_url: str = typer.Option(None, "--api-url", "-a", envvar="GERION_API_URL", help="API Gateway URL for sending results"),
+    client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help=f"Client ID for API authentication (default: {CLIENT_ID})"),
+    api_key: str = typer.Option(None, "--api-key", "-k", envvar="GERION_API_KEY", hide_input=True, help="M2M API key for authentication"),
     output_file: str = typer.Option(None, "--output-file", "-o", help="Save results to a file (disables API sending)"),
     format: OutputFormat = typer.Option(OutputFormat.JSON, "--format", "-f", help="Output format for file saving"),
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
+    """
+    Scan project dependencies for known vulnerabilities using Trivy.
+    
+    This command analyzes package dependencies (npm, pip, maven, etc.) and identifies
+    known CVEs (Common Vulnerabilities and Exposures) in the installed packages.
+    Results can be sent to the API Gateway or saved to a local file.
+    
+    Examples:
+        # Scan current directory
+        gerion-cli sca-scan
+        
+        # Scan specific directory
+        gerion-cli sca-scan /path/to/code
+        
+        # Save results to file
+        gerion-cli sca-scan --output-file results.json
+        
+        # Send to API Gateway
+        gerion-cli sca-scan --api-url https://api.gerion.com --api-key YOUR_KEY
+    """
     set_log_level(log_level)
-    secret_string = SecretString.from_typer_option(client_secret)
+    api_key_string = SecretString.from_typer_option(api_key)
+    # Use default client_id if not provided
+    effective_client_id = client_id or CLIENT_ID
     info("Starting SCA scan...")
     debug(f"Scanning code path: {code_path}")
     metadata = get_metadata()
+    metadata['scan_type'] = 'SCA'
     debug("Metadata collected successfully")
     info("Running Trivy scan...")
     sca_tool_output = run_sca_tool(code_path)
@@ -46,11 +67,11 @@ def sca_scan(
         save_to_file(results, output_file, format)
         debug("Results saved to file. API sending disabled when output file is specified.")
     else:
-        if not all([api_url, client_id, secret_string]):
+        if not all([api_url, effective_client_id, api_key_string]):
             warning("No API credentials provided. Results will be displayed in console only.")
             findings_table(results['findings'], "SCA")
         else:
-            success = send_to_api(results, api_url, client_id, secret_string)
-            if not success:
+            success_result = send_to_api(results, api_url, effective_client_id, api_key_string)
+            if not success_result:
                 warning("Results will be displayed in console only.")
                 findings_table(results['findings'], "SCA")
