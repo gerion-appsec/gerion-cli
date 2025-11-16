@@ -1,24 +1,34 @@
 """
 Authentication functionality for Gerion API.
+Uses M2M API key authentication to get JWT tokens from API Gateway.
 """
 import json
 import httpx
 from gerion_cli.core.types import SecretString
 from gerion_cli.core.logging import debug, info, error
 
-def authenticate_with_api(api_url: str, client_id: str, client_secret: SecretString):
+def authenticate_with_api(api_url: str, client_id: str, api_key: SecretString):
     """
-    Authenticate with the API and get JWT token.
+    Authenticate with the API Gateway using M2M API key and get JWT token.
+    
+    Uses the M2M authentication endpoint: POST /api/v1/auth/m2m/authenticate
+    API key can be provided via Authorization Bearer header or X-API-Key header.
     """
-    auth_url = f'{api_url}/api/v1/team/token'
+    auth_url = f'{api_url}/api/v1/auth/m2m/authenticate'
     auth_data = {
-        "client_id": client_id,
-        "client_secret": client_secret.get_secret_value()
+        "client_id": client_id
+    }
+    
+    # API key can be sent via Authorization Bearer header (recommended) or X-API-Key header
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key.get_secret_value()}"
     }
     
     try:
-        debug(f"Authenticating with: {auth_url}")
-        response = httpx.post(auth_url, json=auth_data, headers={"Content-Type": "application/json"})
+        debug(f"Authenticating with M2M API key at: {auth_url}")
+        debug(f"Client ID: {client_id}")
+        response = httpx.post(auth_url, json=auth_data, headers=headers)
         
         debug(f"Response status: {response.status_code}")
         
@@ -27,21 +37,16 @@ def authenticate_with_api(api_url: str, client_id: str, client_secret: SecretStr
                 token_data = response.json()
                 debug(f"Response data: {json.dumps(token_data, indent=2)}")
                 
-                # Try different possible token field names
-                token = None
-                possible_token_fields = ['token', 'access_token', 'jwt_token', 'accessToken', 'jwtToken']
+                # M2M endpoint returns access_token in the response
+                access_token = token_data.get('access_token')
                 
-                for field in possible_token_fields:
-                    if field in token_data and token_data[field]:
-                        token = token_data[field]
-                        debug(f"Found token in field: {field}")
-                        break
-                
-                if token:
-                    info("Authentication successful")
-                    return token
+                if access_token:
+                    info("M2M authentication successful")
+                    debug(f"Token expires in: {token_data.get('expires_in', 'unknown')} seconds")
+                    debug(f"API Key ID: {token_data.get('api_key_id', 'unknown')}")
+                    return access_token
                 else:
-                    error("No token found in response. Available fields:")
+                    error("No access_token found in response. Available fields:")
                     for key, value in token_data.items():
                         debug(f"  {key}: {type(value).__name__}")
                     return None
@@ -50,6 +55,10 @@ def authenticate_with_api(api_url: str, client_id: str, client_secret: SecretStr
                 error(f"Failed to parse JSON response: {e}")
                 debug(f"Raw response: {response.text}")
                 return None
+        elif response.status_code == 401:
+            error("Authentication failed: Invalid API key or client_id")
+            debug(f"Response: {response.text}")
+            return None
         else:
             error(f"Authentication failed: {response.status_code} - {response.text}")
             return None
