@@ -63,9 +63,9 @@ docker run --rm -v "$PWD:/code" gerion-cli iac-scan /code
 
 ### Common Options
 
-- `--api-url TEXT`         API URL for sending results
-- `--client-id TEXT`       Client ID for API authentication
-- `--client-secret TEXT`   Client secret for API authentication
+- `--api-url TEXT`         API Gateway URL for sending results
+- `--client-id TEXT`       Client ID for API authentication (default: gerion-cli-{version}, e.g., gerion-cli-0.1.0)
+- `--api-key TEXT`         M2M API key for authentication
 - `--output-file TEXT`     Save results to a file (disables API sending)
 - `--format [json|markdown|sarif]`  Output format (default: json)
 - `--log-level [debug|info|warning|error|critical]`  Set logging level
@@ -76,9 +76,12 @@ You can set credentials as environment variables (recommended for CI/CD):
 
 ```sh
 export GERION_API_URL="https://api.gerion.com"
-export GERION_CLIENT_ID="your-client-id"
-export GERION_CLIENT_SECRET="your-client-secret"
+export GERION_API_KEY="your-m2m-api-key"
 ```
+
+**Note**: 
+- The `CLIENT_ID` is automatically set to `gerion-cli-{version}` (e.g., `gerion-cli-0.1.0`) based on the CLI version. This allows the API to identify which version of the CLI is making requests. You can override it with `GERION_CLIENT_ID` if needed, but it's not recommended.
+- You need to create an M2M API key via the Gerion web interface or API before using the CLI. The API key is used for Machine-to-Machine authentication with the API Gateway.
 
 ---
 
