@@ -6,6 +6,15 @@ from datetime import datetime
 
 secrets_severity = 'High'
 
+# Premium Feature Hooks
+# We determine if PRO features are active by checking if the module exists AND if the 'atom' binary is present.
+# This differentiates the Standard Image (no atom) from Premium Image (atom present), even if code text is copied.
+try:
+    from gerion_cli.pro import enrich_secret_finding, enrich_sca_finding, enrich_sast_finding
+    HAS_PRO = True
+except ImportError:
+    HAS_PRO = False
+
 # Aux functions
 def generate_finding_template(metadata):
     return {
@@ -35,6 +44,11 @@ def generate_finding_template(metadata):
         'cwe': None,
         'cve': None,
         'mitigated_on_build_id': None,
+        'trace': None,
+        'confidence': None,
+        'reachability': None,
+        'risk_score': None,
+        'score_breakdown': None
     }
 
 def generate_unique_id(strings):
@@ -95,7 +109,13 @@ def parse_secrets_tool_output(output, metadata):
                 'line_number': start_line,
                 'cwe': ['CWE-798'],
             }
-            results.append({**template, **result})
+            final_finding = {**template, **result}
+            
+            # Apply Premium Enrichment if available
+            if HAS_PRO:
+                enrich_secret_finding(final_finding)
+                
+            results.append(final_finding)
             seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
         
     return results
@@ -147,9 +167,95 @@ def parse_sca_tool_output(output, metadata):
                         'cwe': f.get('CweIDs') if 'CweIDs' in f else None,
                         'cve': vulnerability_id
                     }
-                    results.append({**template, **result})
+
+                    final_finding = {**template, **result}
+                    
+                    # Apply Premium Enrichment if available
+                    if HAS_PRO:
+                        enrich_sca_finding(final_finding, scan_root=metadata.get('code_path', '.'))
+                        
+                    results.append(final_finding)
                     seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
         
+    return results
+
+def parse_sast_tool_output(output, metadata):
+    """
+    Parses the output of a SAST tool (Semgrep) and formats it as a set of findings.
+    
+    Args:
+        output: List of Semgrep result objects.
+        metadata: Metadata about the scan.
+    """
+    results = []
+    seen_ids = set()
+    
+    for item in output:
+        # Semgrep specific fields
+        rule_id = item.get('check_id', 'unknown')
+        file_path = item.get('path', 'unknown')
+        start_line = item.get('start', {}).get('line', 0)
+        extra = item.get('extra', {})
+        message = extra.get('message', 'No description available')
+        severity_raw = extra.get('severity', 'UNKNOWN').upper()
+        
+        # Normalize Severity
+        severity_map = {
+            'ERROR': 'HIGH',
+            'CRITICAL': 'CRITICAL',
+            'WARNING': 'MEDIUM',
+            'INFO': 'LOW'
+        }
+        severity = severity_map.get(severity_raw, 'MEDIUM') # Default to Medium if unknown
+        fix = extra.get('fix', None)
+        cwe_list = extra.get('metadata', {}).get('cwe', [])
+        if isinstance(cwe_list, str): cwe_list = [cwe_list]
+        
+        # Unique ID
+        finding_id = str(generate_unique_id([file_path, str(start_line), rule_id]))
+        
+        if finding_id not in seen_ids:
+            template = generate_finding_template(metadata)
+            result = {
+                'finding_id': finding_id,
+                'title': f"{rule_id}",
+                'description': message,
+                'mitigation': f"Fix suggested: {fix}" if fix else "Review code logic.",
+                'severity': severity,
+                'security_scope': 'Code',
+                'scan_type': 'SAST',
+                'file_path': file_path,
+                'line_number': start_line,
+                'component_name': rule_id.split('.')[-1] if '.' in rule_id else rule_id, # Rough component
+                'component_version': None,
+                'component_fix': None,
+                'cwe': cwe_list,
+                'cve': None
+            }
+            
+            final_finding = {**template, **result}
+            
+            # Preserve reachability if already set by StructuralEngine
+            if 'reachability' in item:
+                 final_finding['reachability'] = item['reachability']
+            if 'confidence' in item:
+                 final_finding['confidence'] = item['confidence']
+            if 'trace' in item:
+                 final_finding['trace'] = item['trace']
+            
+            # Enrich if Pro (Calculates Score)
+            if HAS_PRO:
+                enrich_sast_finding(final_finding)
+            
+            # Enrich if Pro (Calculates Score)
+            if HAS_PRO:
+                enrich_sast_finding(final_finding)
+            
+            results.append(final_finding)
+            seen_ids.add(finding_id)
+            
+    return results
+            
     return results 
 
 def parse_iac_tool_output(output, metadata):

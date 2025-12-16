@@ -1,4 +1,2 @@
-"""
-Output generation for Gerion CLI.
-Contains file formats and console tables.
-""" 
+from .formats import save_to_file
+from .tables import findings_table

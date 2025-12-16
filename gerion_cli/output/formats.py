@@ -86,8 +86,15 @@ def save_as_markdown(results: Dict[str, Any], filename: str):
         
         # Create table header based on scan type
         if scan_type == "SCA":
-            markdown_content += "| Severity | CVE | Component | File |\n"
-            markdown_content += "|----------|-----|-----------|------|\n"
+            # Check if any finding has reachability data
+            has_premium = any(f.get('reachability') for f in findings)
+            
+            if has_premium:
+                markdown_content += "| Severity | Risk Score | Reachability | CVE | Component | File |\n"
+                markdown_content += "|----------|------------|--------------|-----|-----------|------|\n"
+            else:
+                markdown_content += "| Severity | CVE | Component | File |\n"
+                markdown_content += "|----------|-----|-----------|------|\n"
             
             for finding in sorted_findings:
                 severity = finding.get('severity', 'Info')
@@ -102,11 +109,23 @@ def save_as_markdown(results: Dict[str, Any], filename: str):
                 
                 component = f"{finding.get('component_name', 'N/A')} {finding.get('component_version', '')}"
                 
-                markdown_content += f"| {severity_emoji} {severity_normalized} | {finding.get('cve', 'N/A')} | {component} | `{finding.get('file_path', 'N/A')}` |\n"
+                if has_premium:
+                    risk_score = finding.get('risk_score', 'N/A')
+                    reachability = finding.get('reachability', 'N/A')
+                    markdown_content += f"| {severity_emoji} {severity_normalized} | {risk_score} | {reachability} | {finding.get('cve', 'N/A')} | {component} | `{finding.get('file_path', 'N/A')}` |\n"
+                else:
+                    markdown_content += f"| {severity_emoji} {severity_normalized} | {finding.get('cve', 'N/A')} | {component} | `{finding.get('file_path', 'N/A')}` |\n"
         
         else:  # Secrets
-            markdown_content += "| Severity | Title | File:Line |\n"
-            markdown_content += "|----------|-------|-----------|\n"
+            # Check if any finding has confidence data
+            has_premium = any(f.get('confidence') for f in findings)
+            
+            if has_premium:
+                markdown_content += "| Severity | Confidence | Title | File:Line |\n"
+                markdown_content += "|----------|------------|-------|-----------|\n"
+            else:
+                markdown_content += "| Severity | Title | File:Line |\n"
+                markdown_content += "|----------|-------|-----------|\n"
             
             for finding in sorted_findings:
                 severity = finding.get('severity', 'Info')
@@ -122,7 +141,11 @@ def save_as_markdown(results: Dict[str, Any], filename: str):
                 title = finding.get('title', 'N/A')
                 file_line = f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}"
                 
-                markdown_content += f"| {severity_emoji} {severity_normalized} | {title} | `{file_line}` |\n"
+                if has_premium:
+                    confidence = finding.get('confidence', 'N/A')
+                    markdown_content += f"| {severity_emoji} {severity_normalized} | {confidence} | {title} | `{file_line}` |\n"
+                else:
+                    markdown_content += f"| {severity_emoji} {severity_normalized} | {title} | `{file_line}` |\n"
         
         # Add detailed findings section
         markdown_content += "\n## Detailed Findings\n\n"
@@ -140,6 +163,22 @@ def save_as_markdown(results: Dict[str, Any], filename: str):
             
             markdown_content += f"### {severity_emoji} {finding.get('title', 'N/A')}\n\n"
             markdown_content += f"- **Severity**: {severity_normalized}\n"
+            
+            if finding.get('confidence'):
+                markdown_content += f"- **Confidence**: {finding.get('confidence')}\n"
+            if finding.get('risk_score'):
+                markdown_content += f"- **Risk Score**: {finding.get('risk_score')}\n"
+            if finding.get('reachability'):
+                markdown_content += f"- **Reachability**: {finding.get('reachability')}\n"
+            
+            if finding.get('score_breakdown'):
+                sb = finding['score_breakdown']
+                markdown_content += "- **Scoring Details**:\n"
+                markdown_content += f"  - Base Section: {sb.get('score_base', 0)}\n" 
+                markdown_content += f"  - Verificability: {sb.get('score_verificability', 1.0)}\n"
+                markdown_content += f"  - Reachability: {sb.get('score_reachability', 0.9)}\n"
+                markdown_content += f"  - Environment: {sb.get('score_environment', 1.0)}\n"
+
             markdown_content += f"- **File**: `{finding.get('file_path', 'N/A')}`"
             
             if finding.get('line_number'):
@@ -235,6 +274,16 @@ def save_as_sarif(results: Dict[str, Any], filename: str):
             properties['component'] = f"{finding.get('component_name')} {finding.get('component_version', '')}"
         if finding.get('mitigation'):
             properties['mitigation'] = finding.get('mitigation')
+        
+        # Add Premium Fields to SARIF properties
+        if finding.get('confidence'):
+            properties['confidence'] = finding.get('confidence')
+        if finding.get('reachability'):
+            properties['reachability'] = finding.get('reachability')
+        if finding.get('risk_score') is not None:
+            properties['riskScore'] = finding.get('risk_score')
+        if finding.get('score_breakdown'):
+            properties['gerionScoreBreakdown'] = finding.get('score_breakdown')
         
         if properties:
             sarif_result['properties'] = properties

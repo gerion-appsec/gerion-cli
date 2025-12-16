@@ -1,85 +1,67 @@
-# Stage 1: Builder stage to install Trivy and Gitleaks
-FROM alpine:latest AS builder
+# Dockerfile (Standard)
+# Base: Python 3.13 Slim (Debian)
 
-# Define versions as build arguments with default values for flexibility
+# Stage 1: Builder stage to install Trivy and Gitleaks
+FROM python:3.13-slim-bookworm AS builder
+
+# Install build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    tar \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Define versions
 ARG TRIVY_VERSION=0.61.0
 ARG GITLEAKS_VERSION=8.24.2
 
-# Set environment variables for consistent behavior
-ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Install Trivy (Binary)
+RUN TRIVY_ARCH="Linux-64bit" && \
+    curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${TRIVY_ARCH}.tar.gz" -o trivy.tar.gz && \
+    tar -xzf trivy.tar.gz -C /usr/local/bin/ trivy && \
+    rm trivy.tar.gz
 
-# Update package index and install necessary tools in a single layer
-RUN set -eux && \
-    apk update && \
-    apk add --no-cache curl bash gnupg openssl ca-certificates
+# Install Gitleaks (Binary)
+RUN GITLEAKS_ARCH="linux_x64" && \
+    curl -sfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${GITLEAKS_ARCH}.tar.gz" -o gitleaks.tar.gz && \
+    tar -xzf gitleaks.tar.gz -C /usr/local/bin/ gitleaks && \
+    rm gitleaks.tar.gz
 
-# Install Trivy
-RUN set -eux && \
-    TRIVY_ARCH="Linux-64bit" && \
-    TRIVY_DOWNLOAD_URL="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${TRIVY_ARCH}.tar.gz" && \
-    echo "Downloading Trivy from: ${TRIVY_DOWNLOAD_URL}" && \
-    curl -sfL "${TRIVY_DOWNLOAD_URL}" -o /tmp/trivy.tar.gz && \
-    tar -xzvf /tmp/trivy.tar.gz -C /usr/local/bin/ && \
-    rm /tmp/trivy.tar.gz
-
-# Install Gitleaks
-RUN set -eux && \
-    GITLEAKS_ARCH="linux_x64" && \
-    GITLEAKS_DOWNLOAD_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${GITLEAKS_ARCH}.tar.gz" && \
-    echo "Downloading Gitleaks from: ${GITLEAKS_DOWNLOAD_URL}" && \
-    curl -sfL "${GITLEAKS_DOWNLOAD_URL}" -o /tmp/gitleaks.tar.gz && \
-    tar -xzvf /tmp/gitleaks.tar.gz -C /usr/local/bin/ gitleaks && \
-    rm /tmp/gitleaks.tar.gz
-
-# Stage 2: Builder stage for Gerion CLI
-FROM python:3.13-alpine AS cli-builder
-
-# Copy the entire project
-COPY . /gerion_cli/
+# Stage 2: Build Gerion CLI
+COPY . /gerion_cli
 WORKDIR /gerion_cli
 
-# Install Gerion CLI
-RUN set -eux && \
-    apk add binutils && \
-    python -m venv venv && \
-    source venv/bin/activate && \
-    pip install pyinstaller poetry && \
-    # Regenerate lock file if needed and install dependencies
-    poetry lock && \
-    poetry install && \
+# Install dependencies and build binary
+RUN pip install poetry pyinstaller && \
+    poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi && \
+    # Remove Premium code for Standard Image (Open Core)
+    rm -rf gerion_cli/pro && \
     pyinstaller --name gerion --distpath /usr/local/bin/ --onefile gerion_cli/main.py
 
-# Stage 3: Final stage with Trivy, Gitleaks and Gerion CLI
-FROM alpine:latest AS final
+# Stage 3: Final Stage
+FROM python:3.13-slim-bookworm
 
-# Copy only the necessary executables from the builder stages
+# Copy binaries
 COPY --from=builder /usr/local/bin/trivy /usr/local/bin/trivy
 COPY --from=builder /usr/local/bin/gitleaks /usr/local/bin/gitleaks
-COPY --from=cli-builder /usr/local/bin/gerion /usr/local/bin/gerion
+COPY --from=builder /usr/local/bin/gerion /usr/local/bin/gerion
 
-# Install base software and create non-root user
-RUN set -eux && \
-    apk add --no-cache git bash ncurses && \
-    addgroup -g 1000 gerion && \
-    adduser -D -s /bin/bash -u 1000 -G gerion gerion
+# Install Runtime Deps & Semgrep (Pinned)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir semgrep==1.97.0
 
-# Create working directory and set permissions
-RUN mkdir -p /code /output && \
-    chown -R gerion:gerion /code /output
+# User Setup
+RUN groupadd -r gerion && useradd -r -g gerion -d /home/gerion -m gerion
+RUN mkdir -p /code /output && chown -R gerion:gerion /code /output
 
-# Set working directory
 WORKDIR /code
-
-# Set environment variables for better terminal support
-ENV TERM=xterm-256color
-ENV PYTHONUNBUFFERED=1
+ENV PATH="/usr/local/bin:${PATH}"
 ENV FORCE_COLOR=1
 
-# Switch to non-root user for security
 USER gerion
-
-# Define entrypoint to run Gerion CLI by default (can be overridden)
-ENTRYPOINT ["/usr/local/bin/gerion"]
-
-# Default command (can be overridden)
+ENTRYPOINT ["gerion"]
 CMD ["--help"]
