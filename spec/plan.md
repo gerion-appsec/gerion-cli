@@ -5,8 +5,8 @@
 **Gerion CLI** is a command-line interface tool for performing security scans on codebases. It integrates multiple security scanning tools (Gitleaks, Trivy) to detect secrets, vulnerable dependencies, and infrastructure misconfigurations, and can send results to the Gerion API Gateway for centralized management.
 
 ### Core Responsibilities
-- **Security Scanning**: Execute secrets detection, SCA (Software Component Analysis), and IaC (Infrastructure as Code) scans
-- **Tool Integration**: Orchestrate external security tools (Gitleaks, Trivy) in a unified interface
+- **Security Scanning**: Execute SAST (Static Analysis), Secrets detection, SCA (Software Component Analysis), and IaC (Infrastructure as Code) scans
+- **Tool Integration**: Orchestrate external security tools (Semgrep, Gitleaks, Trivy) in a unified interface
 - **API Integration**: Authenticate and send scan results to Gerion API Gateway using M2M API keys
 - **Output Generation**: Support multiple output formats (JSON, Markdown, SARIF) and console display
 - **Metadata Collection**: Automatically extract Git repository metadata (branch, commit, author)
@@ -46,6 +46,7 @@ Gerion CLI → Security Tools (Gitleaks/Trivy) → Parse Results → API Gateway
 ### External Tools
 - **Gitleaks**: Secrets detection in code repositories
 - **Trivy**: SCA (vulnerability scanning) and IaC (infrastructure misconfiguration) scanning
+- **Semgrep**: SAST (Static Application Security Testing) for code patterns and bugs
 
 ### Project Structure
 ```
@@ -69,6 +70,7 @@ gerion-cli/
 │   │   ├── secrets.py        # Gitleaks integration
 │   │   ├── sca.py            # Trivy SCA integration
 │   │   ├── iac.py            # Trivy IaC integration
+│   │   ├── sast.py           # Semgrep SAST integration
 │   │   └── parser.py         # Tool output parsing
 │   ├── utils/                # Utility functions
 │   └── main.py               # CLI application entry point
@@ -106,6 +108,14 @@ The CLI uses Machine-to-Machine (M2M) API key authentication to communicate with
 **Note**: The `CLIENT_ID` is automatically set based on the CLI version (`gerion-cli-{version}`) to allow the API Gateway to identify which version of the CLI is making requests. This is defined in `gerion_cli/core/config.py` and should not be changed unless necessary.
 
 ## 📡 CLI Commands
+
+### SAST Scan
+```bash
+gerion-cli sast-scan [CODE_PATH] [OPTIONS]
+```
+- **Purpose**: Detect security vulnerabilities and code quality issues
+- **Tool**: Semgrep
+- **Output**: List of findings with detailed message and severity
 
 ### Secrets Scan
 ```bash
@@ -169,7 +179,12 @@ gerion-cli iac-scan [CODE_PATH] [OPTIONS]
     'false_positive': bool,         # False positive flag
     'creation_date': str,           # ISO timestamp
     'last_update_date': str,        # ISO timestamp
-    'mitigated_on_build_id': str    # Build ID when mitigated
+    'mitigated_on_build_id': str,   # Build ID when mitigated
+    # Premium Fields (Optional)
+    'trace': dict,                  # Trace graph (nodes/edges)
+    'reachability': str,            # REACHABLE, UNREACHABLE, UNKNOWN
+    'risk_score': float,            # Calculated risk score
+    'confidence': str               # LOW, MEDIUM, HIGH
 }
 ```
 
@@ -248,6 +263,13 @@ gerion-cli iac-scan [CODE_PATH] [OPTIONS]
 - **All Tools Included**: Trivy and Gitleaks pre-installed
 - **Non-Root User**: Runs as `gerion` user (UID 1000) for security
 - **Volume Mounts**: `/code` for code to scan, `/output` for output files
+
+### Open Core Architecture
+- **Core Image**: Builds from `gerion-cli` (Open Source).
+- **Premium Image**: Builds by overlaying `gerion-cli-premium` on top of Core.
+    - Adds **Trace Graphs**, **Deep Reachability**, and **Risk Scoring**.
+    - Build Context: Requires parent directory containing both repos.
+    - Command: `docker build -f gerion-cli-premium/Dockerfile.premium -t gerion-cli-premium .`
 
 ### Usage
 ```bash

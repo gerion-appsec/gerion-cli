@@ -37,6 +37,14 @@ poetry install
 
 ## 🚦 Usage
 
+### SAST Scan
+
+```sh
+poetry run python -m gerion_cli.main sast-scan [OPTIONS] [CODE_PATH]
+# Or with Docker:
+docker run --rm -v "$PWD:/code" gerion-cli sast-scan /code
+```
+
 ### Secrets Scan
 
 ```sh
@@ -87,6 +95,7 @@ export GERION_API_KEY="your-m2m-api-key"
 
 ## ✨ Features
 
+- 🐛 **SAST Scan**: Find code security issues and bugs using Semgrep.
 - 🔑 **Secrets Scan**: Detect API keys, passwords, and other secrets in your code.
 - 🛡️ **SCA (Dependency Analysis)**: Find vulnerabilities in your dependencies.
 - 🏗️ **IaC Scan**: Detect misconfigurations in Infrastructure as Code (Terraform, Kubernetes, etc.).
@@ -96,6 +105,15 @@ export GERION_API_KEY="your-m2m-api-key"
 - 🧠 **Automatic Git Metadata**: Each scan includes repo, branch, and commit info.
 - 🔒 **Secure Credentials**: Secrets are never printed in logs.
 - 🐳 **All-in-One Docker Image**: No need to install Trivy or Gitleaks manually.
+
+### 💎 Open Core Architecture
+
+Gerion CLI follows an **Open Core** model:
+
+-   **Gerion CLI (Core)**: This repository. Contains standard SAST, SCA, Secrets, and IaC scanning capabilities.
+-   **Gerion Premium**: Advanced features including **Trace Graphs**, **Deep Reachability Analysis**, and **Risk Scoring** are available in the Premium module.
+    -   Premium features are built as an overlay on top of this core repository.
+    -   See `gerion-cli-premium` (if accessible) for building the Pro version.
 
 ---
 
