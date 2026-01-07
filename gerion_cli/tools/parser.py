@@ -69,6 +69,23 @@ def generate_unique_id(strings):
     
     return truncated_hash_hex
 
+def redact_text(text, visible_percent=0.3):
+    """
+    Redacts the middle part of a string, keeping a percentage visible at start and end.
+    Total visible is visible_percent of the length.
+    """
+    if not text or len(text) < 4:
+        return text
+        
+    length = len(text)
+    visible_len = int(length * visible_percent)
+    if visible_len < 2: visible_len = 2 # Keep at least 1 char on each side if possible
+    
+    # Split visible length between start and end
+    side_len = visible_len // 2
+    
+    return f"{text[:side_len]}...[REDACTED]...{text[-side_len:]}"
+
 # Tools parsing functions
 def parse_secrets_tool_output(output, metadata):
     """
@@ -93,7 +110,11 @@ def parse_secrets_tool_output(output, metadata):
         start_line = f.get('StartLine') or f.get('start_line') or f.get('line') or 0
         
         template = generate_finding_template(metadata)   
+        # CRITICAL: ID must be generated from the RAW secret to ensure deduplication works
         finding_id = str(generate_unique_id([file_path, str(match_text), rule_id]))
+        
+        # Redact secret for storage/display
+        redacted_secret = redact_text(str(secret_value))
         
         # Check if the finding_id has already been processed
         if finding_id not in seen_finding_ids:
@@ -101,7 +122,8 @@ def parse_secrets_tool_output(output, metadata):
                 'finding_id': finding_id,
                 'title': f"Hard coded secret: {rule_id}",
                 'description': description,
-                'mitigation': f"Remove the secret ({secret_value}) from the code and rotate it",
+                # Use redacted secret in mitigation advice
+                'mitigation': f"Remove the secret ({redacted_secret}) from the code and rotate it",
                 'severity': secrets_severity,
                 'security_scope': 'Code',
                 'scan_type': 'Secrets',

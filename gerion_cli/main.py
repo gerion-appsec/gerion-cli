@@ -1,6 +1,6 @@
 import typer
 from typing import Optional
-from gerion_cli.commands import secrets_scan, sca_scan, iac_scan, sast_scan
+from gerion_cli.commands import secrets_scan, sca_scan, iac_scan, sast_scan, report
 from gerion_cli.core.config import __version__
 
 
@@ -33,6 +33,7 @@ app.command(name="secrets-scan", help="Scan codebase for hardcoded secrets (API 
 app.command(name="sca-scan", help="Scan dependencies for known vulnerabilities (SCA - Software Component Analysis).")(sca_scan)
 app.command(name="iac-scan", help="Scan Infrastructure as Code files for misconfigurations.")(iac_scan)
 app.command(name="sast-scan", help="Scan code for security vulnerabilities using Semgrep (SAST).")(sast_scan)
+app.command(name="report", help="Generate a security report for the current project or specified filters.")(report)
 
 if __name__ == "__main__":
     app()
