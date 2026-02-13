@@ -56,13 +56,13 @@ Gerion API Gateway or local files.
 | Package Manager | Poetry | |
 | Build | PyInstaller (single binary) | |
 
-### External Security Tools
-| Tool | Purpose | Command Pattern |
-|------|---------|----------------|
-| Gitleaks | Secrets detection | `gitleaks dir <path> --exit-code 0 -f json -r <report>` |
-| Trivy | SCA (vuln scanning) | `trivy fs --scanners vuln -f json --exit-code 0 -o <report> <path>` |
-| Trivy | IaC (misconfig scanning) | `trivy config -f json -o <report> <path>` |
-| Semgrep | SAST (code analysis) | `semgrep scan --config auto --json --output <report> <path>` |
+### External Security Tools (current — migrating, see backlog T2)
+| Tool | Purpose | Command Pattern | Status |
+|------|---------|----------------|--------|
+| Gitleaks | Secrets detection | `gitleaks dir <path> --exit-code 0 -f json -r <report>` | **Keeping** (MIT) |
+| Semgrep | SAST (code analysis) | `semgrep scan --config auto --json --output <report> <path>` | **Replacing** with Opengrep (LGPL 2.1) |
+| Trivy | SCA (vuln scanning) | `trivy fs --scanners vuln -f json --exit-code 0 -o <report> <path>` | **Replacing** with OSV-Scanner (Apache 2.0) |
+| Trivy | IaC (misconfig scanning) | `trivy config -f json -o <report> <path>` | **Replacing** with KICS (Apache 2.0) |
 
 ## Source Tree
 
@@ -199,17 +199,12 @@ Multi-stage build:
 3. Runs as non-root `gerion` user (UID 1000)
 4. Volumes: `/code` (scan target), `/output` (results)
 
-## Known Issues (as of code review 2026-02-13)
+## Known Issues (updated 2026-02-13)
 
-1. **`parser.py:270-274`**: `enrich_sast_finding()` is called TWICE (duplicate block)
-2. **`parser.py:280-281`**: Unreachable `return results` after first return at line 278
-3. **Global report paths**: All tool runners use hardcoded global `report_path` strings instead of `tempfile`, causing race conditions in parallel execution
-4. **Missing tool checks**: `secrets.py`, `sca.py`, `iac.py` don't verify tool binary exists (only `sast.py` checks `shutil.which`)
-5. **No subprocess timeouts**: All `subprocess.run()` calls have no timeout, could hang indefinitely
-6. **No Pydantic models**: Despite Pydantic being a dependency, findings use raw dicts with no validation
-7. **No tests**: Zero test files exist
-8. **Massive command duplication**: All 4 scan commands are near-identical boilerplate
-9. **Inconsistent error returns**: `secrets.py` returns `None` on error, `sca.py`/`iac.py` return `[]`
+1. **No Pydantic models**: Despite Pydantic being a dependency, findings use raw dicts with no validation
+2. **No tests**: Zero test files exist
+3. **Massive command duplication**: All 4 scan commands are near-identical boilerplate
+4. **Inconsistent error returns**: `secrets.py` returns `None` on error, `sca.py`/`iac.py` return `[]`
 
 ## Key Constraints
 - **Python 3.12+**: Required minimum version

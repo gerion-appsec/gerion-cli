@@ -11,27 +11,43 @@
 
 The CLI is **functional but early-stage**. Core scanning (SAST, SCA, Secrets, IaC)
 works, API integration is complete, and multiple output formats are supported.
-However, the codebase has zero tests, several bugs, significant code duplication,
-and the tool choices need revision.
+T1 stability fixes are done. Next priority is migrating to the definitive tool stack.
 
-### What's solid
-- **4 scan types**: SAST (Semgrep), SCA (Trivy), Secrets (Gitleaks), IaC (Trivy)
-- **API integration**: M2M auth + JWT token flow, findings submission
-- **Report command**: Fetches from API, renders in text/json/md/pdf
-- **CI/CD metadata**: GitHub Actions, GitLab CI, Jenkins + manual overrides
-- **Open Core hooks**: Premium enrichment imported conditionally (`HAS_PRO`)
-- **Docker image**: Multi-stage build with all tools bundled
+### Current tool stack
+| Category | Tool | License | Status |
+|----------|------|---------|--------|
+| SAST | Semgrep | Proprietary (post-license change) | **Replacing with Opengrep** |
+| SCA | Trivy (fs) | Apache 2.0 | **Replacing with OSV-Scanner** |
+| IaC | Trivy (config) | Apache 2.0 | **Replacing with KICS** |
+| Secrets | Gitleaks | MIT | **Keeping** |
 
-### What needs work
-- **T1 (Bugs & Stability)**: Fix known bugs, add tool binary checks, add tests
-- **T2 (Tool Migration)**: Replace Semgrep with Opengrep, Trivy SCA with OSV-Scanner
-- **T3 (Architecture)**: Reduce command duplication, add Pydantic models, unify output formats
-- **T4 (Features)**: Scan duration, scan-all command, SARIF import/normalize
+### Target tool stack
+| Category | Tool | License | Install |
+|----------|------|---------|---------|
+| SAST | **Opengrep** | LGPL 2.1 | Binary (Nuitka self-contained) |
+| SCA | **OSV-Scanner** | Apache 2.0 | Go binary |
+| IaC | **KICS** | Apache 2.0 | Go binary |
+| Secrets | **Gitleaks** | MIT | Go binary |
+
+> All binaries. All permissive licenses. Trivy eliminated completely.
+
+### Tool selection rationale
+- **Opengrep over Semgrep**: Community fork after Semgrep's Dec 2024 license change.
+  Same rules, same output format. Backed by Endor Labs, Aikido, Orca, Jit.
+  LGPL 2.1. Install via binary only (PyPI package was hijacked).
+- **OSV-Scanner over Trivy SCA**: Native OSV format output — Risk Detector's
+  `mapper.rs` already consumes OSV natively. Broader DB (aggregates NVD, GitHub
+  Advisory, PyPI, npm, Go). Focused SCA-only tool.
+- **KICS over Checkov/Trivy IaC**: Go binary (no Python bloat in Docker image),
+  2400+ queries (vs Checkov's 1000+ or Trivy's ~500), supports 15+ IaC formats
+  (Terraform, K8s, Dockerfile, CF, Helm, Ansible, OpenAPI, Pulumi...), Apache 2.0.
+- **Gitleaks kept**: MIT license, fast, mature, actively maintained. TruffleHog
+  rejected due to AGPL-3.0 risk for Apache 2.0 Open Core project (subprocess
+  invocation as derivative work is legally gray). detect-secrets (Yelp) rejected
+  as essentially unmaintained.
 
 ### Known limitations
 - **No tests**: Zero test coverage. High regression risk.
-- **No subprocess timeouts**: Tool hangs will hang the CLI indefinitely.
-- **Global report paths**: Race condition risk in parallel execution.
 - **Raw dict models**: No validation on findings data structure.
 
 ---
@@ -40,79 +56,10 @@ and the tool choices need revision.
 
 | Tier | Goal | Items |
 |------|------|-------|
-| **T1** | Bugs & Stability — Fix issues | #1, #2, #3 |
-| **T2** | Tool Migration — Opengrep + OSV-Scanner | #4, #5, #6 |
-| **T3** | Architecture & Quality — DRY, models, tests | #7, #8, #9, #10 |
-| **T4** | Features — New capabilities | #11, #12, #13 |
-
----
-
-## Tier 1 — Bugs & Stability
-
-### #1 Add Tool Binary Availability Checks
-
-**Priority**: HIGH
-**Effort**: Low
-**Impact**: Clear error messages instead of cryptic subprocess failures
-
-#### Problem
-Only `sast.py` checks for tool availability (`shutil.which("semgrep")`).
-The other tool runners (`secrets.py`, `sca.py`, `iac.py`) will crash with
-unhelpful errors if the binary isn't in PATH.
-
-#### Solution
-Add `shutil.which()` check at the start of each `run_*_tool()` function.
-Return empty list or None with a clear error message.
-
-#### Files to Modify
-- `gerion_cli/tools/secrets.py` — Add `shutil.which("gitleaks")` check
-- `gerion_cli/tools/sca.py` — Add `shutil.which("trivy")` check
-- `gerion_cli/tools/iac.py` — Add `shutil.which("trivy")` check
-
----
-
-### #2 Use Tempfile for Report Paths
-
-**Priority**: HIGH
-**Effort**: Low
-**Impact**: Eliminates race conditions, prevents file leaks in CWD
-
-#### Problem
-All tool runners use hardcoded global strings like `report_path = "gerion-cli-sca-report.json"`.
-This writes temp files in the current working directory and causes race conditions
-if multiple scans run in parallel.
-
-#### Solution
-Replace global `report_path` with `tempfile.NamedTemporaryFile(suffix='.json', delete=False)`.
-Clean up in the `finally` block (already implemented, just needs tempfile path).
-
-#### Files to Modify
-- `gerion_cli/tools/secrets.py`
-- `gerion_cli/tools/sca.py`
-- `gerion_cli/tools/iac.py`
-- `gerion_cli/tools/sast.py`
-
----
-
-### #3 Add Subprocess Timeouts
-
-**Priority**: HIGH
-**Effort**: Low
-**Impact**: Prevents CLI from hanging indefinitely on unresponsive tools
-
-#### Problem
-All `subprocess.run()` calls have no `timeout` parameter. If a tool hangs
-(e.g., Trivy downloading a large DB), the CLI hangs forever.
-
-#### Solution
-Add `timeout=300` (5 minutes) to all `subprocess.run()` calls. Catch
-`subprocess.TimeoutExpired` and return appropriate error.
-
-#### Files to Modify
-- `gerion_cli/tools/secrets.py`
-- `gerion_cli/tools/sca.py`
-- `gerion_cli/tools/iac.py`
-- `gerion_cli/tools/sast.py`
+| **T1** | Bugs & Stability | ~~#1, #2, #3~~ DONE |
+| **T2** | Tool Migration — Opengrep + OSV-Scanner + KICS | #4, #5, #6, #7 |
+| **T3** | Architecture & Quality — DRY, models, tests | #8, #9, #10, #11 |
+| **T4** | Features — New capabilities | #12, #13, #14 |
 
 ---
 
@@ -122,25 +69,27 @@ Add `timeout=300` (5 minutes) to all `subprocess.run()` calls. Catch
 
 **Priority**: HIGH
 **Effort**: Medium
-**Impact**: Opengrep is the community fork of Semgrep after Semgrep's license change. Fully compatible, open source.
+**Impact**: Opengrep is the LGPL 2.1 community fork of Semgrep. Same rules/output format, open source aligned.
 
 #### Rationale
-Semgrep changed its license to a more restrictive model. Opengrep is the
-community-driven open-source fork that maintains compatibility with Semgrep
-rules and output format. Switching ensures long-term open-source alignment.
+Semgrep changed its license (Dec 2024) to restrict commercial use of community rules.
+Opengrep is the community-driven fork maintaining full compatibility. Backed by
+Endor Labs, Aikido, Orca Security, Jit. Install via binary only — PyPI package
+was hijacked by an attacker.
 
 #### Solution
 1. **CLI**: Replace `semgrep` binary calls with `opengrep` in `tools/sast.py`
 2. **Parser**: Verify Opengrep JSON output is compatible with `parse_sast_tool_output()`.
    Opengrep maintains Semgrep output compatibility, so minimal changes expected.
-3. **Dockerfile**: Replace `pip install semgrep==1.97.0` with Opengrep binary install.
+3. **Dockerfile**: Replace `pip install semgrep==1.97.0` with Opengrep binary install
+   via official install script or release binary.
 4. **Tool check**: Update `shutil.which("semgrep")` to `shutil.which("opengrep")`
 5. **Documentation**: Update README.md, plan.md references
 
 #### Files to Modify
 - `gerion_cli/tools/sast.py` — Change command from `semgrep` to `opengrep`
 - `gerion_cli/tools/parser.py` — Verify/adapt SAST output parsing (likely no changes)
-- `Dockerfile` — Replace Semgrep install with Opengrep binary
+- `Dockerfile` — Replace Semgrep pip install with Opengrep binary
 - `README.md` — Update tool references
 - `spec/plan.md` — Update tool references
 
@@ -154,37 +103,49 @@ rules and output format. Switching ensures long-term open-source alignment.
 
 **Priority**: HIGH
 **Effort**: Medium
-**Impact**: OSV-Scanner uses the OSV database (Google's Open Source Vulnerabilities), providing broader coverage and native integration with the Risk Detector motor (which already accepts OSV format).
+**Impact**: Native OSV format output for Risk Detector compatibility. Broader vulnerability database.
 
 #### Rationale
 1. **OSV format compatibility**: Risk Detector's `mapper.rs` already normalizes
-   OSV reports natively. Using OSV-Scanner means the CLI output can feed directly
-   into the motor without format conversion.
-2. **Broader database**: OSV aggregates from multiple sources (NVD, GitHub Advisory,
-   PyPI, npm, Go, etc.).
-3. **Simpler SCA-only tool**: Trivy is a multi-purpose tool; OSV-Scanner is focused
-   on vulnerability detection.
-4. **Keep Trivy for IaC**: Trivy config scanning remains excellent and has no
-   equivalent in OSV-Scanner.
+   OSV reports natively. CLI output can feed directly into the motor.
+2. **Broader database**: OSV aggregates NVD, GitHub Advisory, PyPI, npm, Go, etc.
+3. **Focused tool**: OSV-Scanner is SCA-only, unlike Trivy's multi-purpose approach.
 
-#### Solution
-1. **CLI**: Replace `trivy fs --scanners vuln` with `osv-scanner scan --format json`
-2. **Parser**: Adapt `parse_sca_tool_output()` to handle OSV-Scanner JSON format.
-   OSV-Scanner output is structured differently from Trivy (uses OSV schema).
-3. **Dockerfile**: Replace Trivy SCA binary with OSV-Scanner binary install.
-   Keep Trivy for IaC scanning.
-4. **Finding mapping**: Map OSV fields to Finding model:
-   - `id` -> `cve` (OSV ID, e.g., `GHSA-xxx` or `CVE-xxx`)
-   - `summary` -> `title`
-   - `details` -> `description`
-   - `affected[].package.name` -> `component_name`
-   - `affected[].ranges[].events[].fixed` -> `component_fix`
-   - `database_specific.severity` -> `severity`
+#### OSV-Scanner JSON output structure
+```json
+{
+  "results": [{
+    "packageSource": { "path": "/path/to/lockfile", "type": "lockfile" },
+    "packages": [{
+      "package": { "name": "pkg", "version": "1.0", "ecosystem": "PyPI" },
+      "vulnerabilities": [{
+        "id": "GHSA-xxx",
+        "aliases": ["CVE-2024-xxx"],
+        "summary": "...",
+        "details": "..."
+      }]
+    }]
+  }]
+}
+```
+
+#### Finding mapping
+| OSV-Scanner field | Finding field |
+|-------------------|---------------|
+| `vulnerabilities[].id` | `cve` (GHSA-xxx or CVE-xxx) |
+| `vulnerabilities[].aliases[]` | `cve` (prefer CVE if available in aliases) |
+| `vulnerabilities[].summary` | `title` |
+| `vulnerabilities[].details` | `description` |
+| `packages[].package.name` | `component_name` |
+| `packages[].package.version` | `component_version` |
+| `affected[].ranges[].events[].fixed` | `component_fix` |
+| `database_specific.severity` | `severity` |
+| `packageSource.path` | `file_path` |
 
 #### Files to Modify
-- `gerion_cli/tools/sca.py` — Replace Trivy command with OSV-Scanner command
+- `gerion_cli/tools/sca.py` — Replace Trivy command with `osv-scanner scan --format json`
 - `gerion_cli/tools/parser.py` — Rewrite `parse_sca_tool_output()` for OSV format
-- `Dockerfile` — Add OSV-Scanner binary, keep Trivy for IaC only
+- `Dockerfile` — Install OSV-Scanner Go binary
 - `README.md` — Update tool references
 
 #### Verification
@@ -193,18 +154,72 @@ rules and output format. Switching ensures long-term open-source alignment.
 
 ---
 
-### #6 Update Dockerfile for New Tool Stack
+### #6 Replace Trivy IaC with KICS
 
-**Priority**: HIGH (depends on #4, #5)
+**Priority**: HIGH
+**Effort**: Medium
+**Impact**: 2400+ queries (vs Trivy's ~500), 15+ IaC formats, Go binary, Apache 2.0. Eliminates Trivy entirely.
+
+#### Rationale
+1. **More queries**: 2400+ Rego-based queries vs Trivy's ~500 for IaC
+2. **More formats**: Terraform, K8s, Dockerfile, CloudFormation, Helm, Ansible,
+   OpenAPI, Pulumi, and 15+ more
+3. **Eliminates Trivy**: With OSV-Scanner for SCA (#5) and KICS for IaC,
+   Trivy is no longer needed in the stack at all
+4. **Go binary**: Lightweight, no Python dependencies
+5. **Apache 2.0**: Clean license
+
+#### KICS JSON output structure
+KICS outputs JSON with `queries` array containing findings grouped by query ID.
+Each finding has severity, file path, line number, expected/actual values, and
+remediation guidance.
+
+#### Finding mapping (to verify during implementation)
+| KICS field | Finding field |
+|------------|---------------|
+| `query_name` | `title` |
+| `description` | `description` |
+| `severity` | `severity` (HIGH, MEDIUM, LOW, INFO) |
+| `file_name` | `file_path` |
+| `line` | `line_number` |
+| `expected_value` / `actual_value` | `mitigation` |
+| `query_id` | Used for `finding_id` generation |
+| `platform` | Additional context (Terraform, K8s, etc.) |
+
+#### Files to Modify
+- `gerion_cli/tools/iac.py` — Replace Trivy command with `kics scan --type json`
+- `gerion_cli/tools/parser.py` — Rewrite `parse_iac_tool_output()` for KICS format
+- `Dockerfile` — Replace Trivy with KICS binary, remove Trivy entirely
+- `README.md` — Update tool references
+
+#### Verification
+- Run KICS on test IaC files, compare coverage with Trivy output
+- Verify Finding model fields map correctly
+
+---
+
+### #7 Update Dockerfile for New Tool Stack
+
+**Priority**: HIGH (depends on #4, #5, #6)
 **Effort**: Low
-**Impact**: Docker image reflects new tool choices
+**Impact**: Docker image reflects final tool choices. Trivy completely removed.
 
 #### Solution
-After #4 and #5 are complete:
-1. Install Opengrep binary (replace pip install semgrep)
-2. Install OSV-Scanner binary (from Google releases)
-3. Keep Trivy for IaC scanning only
-4. Keep Gitleaks for secrets scanning
+After #4, #5, and #6 are complete:
+1. Install **Opengrep** binary (replace `pip install semgrep`)
+2. Install **OSV-Scanner** Go binary (from Google releases)
+3. Install **KICS** Go binary (from Checkmarx releases)
+4. **Remove Trivy** entirely
+5. Keep **Gitleaks** for secrets scanning
+
+#### Target Docker image contents
+```
+/usr/local/bin/opengrep     # SAST
+/usr/local/bin/osv-scanner   # SCA
+/usr/local/bin/kics          # IaC (+ queries dir)
+/usr/local/bin/gitleaks      # Secrets
+/usr/local/bin/gerion        # CLI binary
+```
 
 #### Files to Modify
 - `Dockerfile`
@@ -213,7 +228,7 @@ After #4 and #5 are complete:
 
 ## Tier 3 — Architecture & Quality
 
-### #7 Extract Base Scan Command
+### #8 Extract Base Scan Command
 
 **Priority**: MEDIUM
 **Effort**: Medium
@@ -242,7 +257,7 @@ Each command file becomes a thin wrapper that passes its specific runner/parser.
 
 ---
 
-### #8 Add Pydantic Models for Findings
+### #9 Add Pydantic Models for Findings
 
 **Priority**: MEDIUM
 **Effort**: Medium
@@ -266,7 +281,7 @@ typos in field names.
 
 ---
 
-### #9 Unify Output Format System
+### #10 Unify Output Format System
 
 **Priority**: MEDIUM
 **Effort**: Low
@@ -288,7 +303,7 @@ These need to be unified.
 
 ---
 
-### #10 Add Unit Tests
+### #11 Add Unit Tests
 
 **Priority**: HIGH
 **Effort**: High
@@ -316,7 +331,7 @@ Prioritized test plan:
 
 ## Tier 4 — Features
 
-### #11 Add Scan Duration Tracking
+### #12 Add Scan Duration Tracking
 
 **Priority**: LOW
 **Effort**: Low
@@ -338,10 +353,10 @@ que no se puede mostrar porque no lo capturamos con la cli."
 
 ---
 
-### #12 Add `scan-all` Command
+### #13 Add `scan-all` Command
 
 **Priority**: LOW
-**Effort**: Low (after #7)
+**Effort**: Low (after #8)
 **Impact**: Single command to run all scan types
 
 #### Problem
@@ -358,7 +373,7 @@ sequentially and aggregates results.
 
 ---
 
-### #13 Migrate Tool Runners to Use Logging
+### #14 Migrate Tool Runners to Use Logging
 
 **Priority**: LOW
 **Effort**: Low
@@ -406,3 +421,8 @@ These are NOT backlog items for the CLI:
 | — | CI/CD metadata detection | v0.1.0 | GitHub Actions, GitLab CI, Jenkins |
 | — | Docker multi-stage build | v0.1.0 | Trivy + Gitleaks + Semgrep + CLI binary |
 | — | Premium Open Core hooks | v0.1.0 | Conditional import of `gerion_cli/pro/` |
+| — | Fix duplicate enrich_sast_finding | v0.1.0 | Removed duplicate call in parser.py |
+| — | Fix unreachable return statement | v0.1.0 | Removed dead code in parser.py |
+| #1 | Tool binary availability checks | v0.1.0 | `shutil.which()` in all 4 tool runners |
+| #2 | Tempfile for report paths | v0.1.0 | `tempfile.NamedTemporaryFile` in all 4 runners |
+| #3 | Subprocess timeouts | v0.1.0 | `timeout=180` + dual timeout (tool-level + subprocess) |
