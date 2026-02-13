@@ -9,7 +9,7 @@ import shutil
 
 import tempfile
 
-def run_sca_tool(code_path):
+def run_sca_tool(code_path, timeout=180):
     if not shutil.which("trivy"):
         print("Trivy tool not found in PATH.")
         return []
@@ -18,9 +18,20 @@ def run_sca_tool(code_path):
     with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as temp_report:
         report_path = temp_report.name
 
-    command = ["trivy", "fs", "--scanners", "vuln", "-f", "json", "--exit-code", "0",  "-o", report_path, code_path]
+    # Calculate tool timeout (allow 10s buffer for CLI overhead)
+    tool_timeout = max(1, timeout - 10)
+    
+    command = [
+        "trivy", "fs", 
+        "--scanners", "vuln", 
+        "--timeout", f"{tool_timeout}s",
+        "-f", "json", 
+        "--exit-code", "0",  
+        "-o", report_path, 
+        code_path
+    ]
     try:
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
         
         # Check if report file exists
         if not os.path.exists(report_path):
@@ -36,6 +47,9 @@ def run_sca_tool(code_path):
             results = data.get('Results', [])
             # Ensure we return a list (Results might be None)
             return results if results is not None else []
+    except subprocess.TimeoutExpired:
+        print(f"Error: SCA scan timed out after {timeout} seconds.")
+        return []
     except json.JSONDecodeError as e:
         print(f"An error occurred while parsing the JSON file: {e}")
         return []

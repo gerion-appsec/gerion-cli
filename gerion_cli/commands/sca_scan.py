@@ -24,6 +24,7 @@ def sca_scan(
     api_key: str = typer.Option(None, "--api-key", "-k", envvar="GERION_API_KEY", hide_input=True, help="M2M API key for authentication"),
     output_file: str = typer.Option(None, "--output-file", "-o", help="Save results to a file (disables API sending)"),
     format: OutputFormat = typer.Option(OutputFormat.JSON, "--format", "-f", help="Output format for file saving"),
+    timeout: int = typer.Option(180, "--timeout", "-t", help="Tool execution timeout in seconds"),
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
@@ -56,7 +57,7 @@ def sca_scan(
     metadata['scan_type'] = 'SCA'
     debug("Metadata collected successfully")
     info("Running Trivy scan...")
-    sca_tool_output = run_sca_tool(code_path)
+    sca_tool_output = run_sca_tool(code_path, timeout=timeout)
     if sca_tool_output is None:
         error("Failed to run SCA scan")
         raise typer.Exit(1)

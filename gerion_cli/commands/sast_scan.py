@@ -26,6 +26,7 @@ def sast_scan(
     api_key: str = typer.Option(None, "--api-key", "-k", envvar="GERION_API_KEY", hide_input=True, help="M2M API key for authentication"),
     output_file: str = typer.Option(None, "--output-file", "-o", help="Save results to a file (disables API sending)"),
     format: OutputFormat = typer.Option(OutputFormat.JSON, "--format", "-f", help="Output format for file saving"),
+    timeout: int = typer.Option(180, "--timeout", "-t", help="Tool execution timeout in seconds"),
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
@@ -47,7 +48,7 @@ def sast_scan(
     info("Running Semgrep scan...")
     
     # Run Tool
-    sast_results = run_sast_tool(code_path)
+    sast_results = run_sast_tool(code_path, timeout=timeout)
     
     if sast_results is None:
         error("Failed to run SAST scan")
