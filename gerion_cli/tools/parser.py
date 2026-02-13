@@ -269,16 +269,10 @@ def parse_sast_tool_output(output, metadata):
             if HAS_PRO:
                 enrich_sast_finding(final_finding)
             
-            # Enrich if Pro (Calculates Score)
-            if HAS_PRO:
-                enrich_sast_finding(final_finding)
-            
             results.append(final_finding)
             seen_ids.add(finding_id)
             
     return results
-            
-    return results 
 
 def parse_iac_tool_output(output, metadata):
     """
