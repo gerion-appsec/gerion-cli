@@ -5,9 +5,15 @@ import subprocess
 import json
 import os
 
+import shutil
+
 report_path = "gerion-cli-sca-report.json"
 
 def run_sca_tool(code_path):
+    if not shutil.which("trivy"):
+        print("Trivy tool not found in PATH.")
+        return []
+
     command = ["trivy", "fs", "--scanners", "vuln", "-f", "json", "--exit-code", "0",  "-o", report_path, code_path]
     try:
         result = subprocess.run(command, capture_output=True, text=True)

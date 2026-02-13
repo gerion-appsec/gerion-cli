@@ -5,9 +5,15 @@ import subprocess
 import json
 import os
 
+import shutil
+
 report_path = "gerion-cli-iac-report.json"
 
 def run_iac_tool(code_path):
+    if not shutil.which("trivy"):
+        print("Trivy tool not found in PATH.")
+        return []
+
     command = [
         "trivy", "config", "-f", "json", "-o", report_path, code_path
     ]

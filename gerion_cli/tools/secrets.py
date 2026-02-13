@@ -5,9 +5,15 @@ import subprocess
 import json
 import os
 
+import shutil
+
 report_path = "gerion-cli-secrets-report.json"
 
 def run_secrets_tool(code_path):
+    if not shutil.which("gitleaks"):
+        print("Gitleaks tool not found in PATH.")
+        return []
+
     command = ["gitleaks", "dir", code_path, "--exit-code", "0", "-f", "json", "-r", report_path]
     try:
         result = subprocess.run(command, capture_output=True, text=True)
