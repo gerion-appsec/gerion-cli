@@ -7,12 +7,16 @@ import os
 
 import shutil
 
-report_path = "gerion-cli-iac-report.json"
+import tempfile
 
 def run_iac_tool(code_path):
     if not shutil.which("trivy"):
         print("Trivy tool not found in PATH.")
         return []
+
+    # Create a temporary file for the report
+    with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as temp_report:
+        report_path = temp_report.name
 
     command = [
         "trivy", "config", "-f", "json", "-o", report_path, code_path

@@ -7,12 +7,16 @@ import os
 
 import shutil
 
-report_path = "gerion-cli-sca-report.json"
+import tempfile
 
 def run_sca_tool(code_path):
     if not shutil.which("trivy"):
         print("Trivy tool not found in PATH.")
         return []
+
+    # Create a temporary file for the report
+    with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as temp_report:
+        report_path = temp_report.name
 
     command = ["trivy", "fs", "--scanners", "vuln", "-f", "json", "--exit-code", "0",  "-o", report_path, code_path]
     try:

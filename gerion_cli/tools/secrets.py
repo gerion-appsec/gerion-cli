@@ -7,12 +7,16 @@ import os
 
 import shutil
 
-report_path = "gerion-cli-secrets-report.json"
+import tempfile
 
 def run_secrets_tool(code_path):
     if not shutil.which("gitleaks"):
         print("Gitleaks tool not found in PATH.")
         return []
+
+    # Create a temporary file for the report
+    with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as temp_report:
+        report_path = temp_report.name
 
     command = ["gitleaks", "dir", code_path, "--exit-code", "0", "-f", "json", "-r", report_path]
     try:

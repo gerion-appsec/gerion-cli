@@ -11,7 +11,7 @@ try:
 except ImportError:
     HAS_PRO = False
 
-report_path = "semgrep_report.json"
+import tempfile
 
 def run_sast_tool(code_path: str) -> List[Dict[str, Any]]:
     """
@@ -23,6 +23,14 @@ def run_sast_tool(code_path: str) -> List[Dict[str, Any]]:
     """
     results = []
 
+    if not shutil.which("semgrep"):
+        print("Semgrep tool not found in PATH.")
+        return []
+
+    # Create a temporary file for the report
+    with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as temp_report:
+        report_path = temp_report.name
+
     # 1. Run Semgrep (OSS)
     command = [
         "semgrep", "scan",
@@ -32,10 +40,6 @@ def run_sast_tool(code_path: str) -> List[Dict[str, Any]]:
         code_path
     ]
     
-    if not shutil.which("semgrep"):
-        print("Semgrep tool not found in PATH.")
-        return []
-
     try:
         # Semgrep returns non-zero on findings, so check=False
         subprocess.run(command, capture_output=True, text=True, check=False)
