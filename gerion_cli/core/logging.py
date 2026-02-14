@@ -7,8 +7,8 @@ from typing import Optional
 from rich.console import Console
 from rich.logging import RichHandler
 
-# Global console instance
-console = Console()
+# Global console instance for logging (stderr)
+console = Console(stderr=True)
 
 class LogLevel(str, Enum):
     DEBUG = "debug"

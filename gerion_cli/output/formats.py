@@ -41,14 +41,27 @@ def save_to_file(results: Dict[str, Any], filename: str, output_format: OutputFo
     else:
         raise ValueError(f"Unsupported output format: {output_format}")
 
+def generate_json_content(results: Dict[str, Any]) -> str:
+    """Generate JSON content from results."""
+    return json.dumps(results, indent=4)
+
 def save_as_json(results: Dict[str, Any], filename: str):
     """Save results as JSON format."""
+    content = generate_json_content(results)
     with open(filename, 'w') as json_file:
-        json.dump(results, json_file, indent=4)
+        json_file.write(content)
     info(f"Results saved to {filename} (JSON format)")
 
 def save_as_markdown(results: Dict[str, Any], filename: str):
     """Save results as Markdown format."""
+    markdown_content = generate_markdown_content(results)
+    with open(filename, 'w', encoding='utf-8') as md_file:
+        md_file.write(markdown_content)
+    
+    info(f"Results saved to {filename} (Markdown format)")
+
+def generate_markdown_content(results: Dict[str, Any]) -> str:
+    """Generate Markdown content from results."""
     metadata = results.get('metadata', {})
     findings = results.get('findings', [])
     
@@ -197,13 +210,18 @@ def save_as_markdown(results: Dict[str, Any], filename: str):
             
             markdown_content += "\n---\n\n"
     
-    with open(filename, 'w', encoding='utf-8') as md_file:
-        md_file.write(markdown_content)
-    
-    info(f"Results saved to {filename} (Markdown format)")
+    return markdown_content
 
 def save_as_sarif(results: Dict[str, Any], filename: str):
     """Save results as SARIF format."""
+    sarif_data = generate_sarif_content(results)
+    with open(filename, 'w') as sarif_file:
+        json.dump(sarif_data, sarif_file, indent=2)
+    
+    info(f"Results saved to {filename} (SARIF format)")
+
+def generate_sarif_content(results: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate SARIF content from results."""
     metadata = results.get('metadata', {})
     findings = results.get('findings', [])
     
@@ -291,7 +309,17 @@ def save_as_sarif(results: Dict[str, Any], filename: str):
         
         sarif_data['runs'][0]['results'].append(sarif_result)
     
-    with open(filename, 'w') as sarif_file:
-        json.dump(sarif_data, sarif_file, indent=2)
-    
-    info(f"Results saved to {filename} (SARIF format)") 
+    return sarif_data
+
+def print_formatted(results: Dict[str, Any], output_format: OutputFormat):
+    """
+    Print results to stdout in the specified format.
+    """
+    if output_format == OutputFormat.JSON:
+        print(generate_json_content(results))
+    elif output_format == OutputFormat.MARKDOWN:
+        print(generate_markdown_content(results))
+    elif output_format == OutputFormat.SARIF:
+        print(json.dumps(generate_sarif_content(results), indent=2))
+    else:
+        raise ValueError(f"Unsupported output format: {output_format}")

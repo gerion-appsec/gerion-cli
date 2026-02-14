@@ -3,7 +3,10 @@ Console table functionality for Gerion CLI.
 """
 from typing import List, Dict
 from rich.table import Table
-from gerion_cli.core.logging import console, success
+from rich.console import Console
+from gerion_cli.core.logging import success
+
+console = Console()
 
 def findings_table(findings: List[Dict], scan_type: str = "Security"):
     """

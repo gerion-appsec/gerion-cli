@@ -9,7 +9,7 @@ def iac_scan(
     client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help=f"Client ID for API authentication (default: {CLIENT_ID})"),
     api_key: str = typer.Option(None, "--api-key", "-k", envvar="GERION_API_KEY", hide_input=True, help="M2M API key for authentication"),
     output_file: str = typer.Option(None, "--output-file", "-o", help="Save results to a file (disables API sending)"),
-    format: OutputFormat = typer.Option(OutputFormat.JSON, "--format", "-f", help="Output format for file saving"),
+    format: OutputFormat = typer.Option(None, "--format", "-f", help="Output format for file saving or stdout (json, markdown, sarif)"),
     timeout: int = typer.Option(180, "--timeout", "-t", help="Tool execution timeout in seconds"),
     queries_path: str = typer.Option(None, "--queries-path", "-q", help="Path to KICS queries directory (for non-standard installations)"),
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")

@@ -11,6 +11,7 @@ from datetime import datetime
 from gerion_cli.core.metadata import get_metadata
 from gerion_cli.core.config import CLIENT_ID
 from gerion_cli.core.types import SecretString
+from gerion_cli.core.logging import info, error, warning, success
 from gerion_cli.api.auth import authenticate_with_api
 
 console = Console()
@@ -28,7 +29,7 @@ def report(
     scan_type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by scan type (SAST, SCA, IAC, SECRETS)"),
     severity: Optional[str] = typer.Option(None, "--severity", "-s", help="Filter by minimum severity (CRITICAL, HIGH, MEDIUM, LOW)"),
     format: ReportFormat = typer.Option(ReportFormat.TEXT, "--format", "-f", help="Output format (text, json, markdown, pdf)"),
-    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path"),
+    output_file: Optional[str] = typer.Option(None, "--output-file", "-o", help="Output file path"),
     api_url: Optional[str] = typer.Option(None, "--api-url", "-u", envvar="GERION_API_URL", help="API Gateway URL"),
     client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help=f"Client ID for API authentication (default: {CLIENT_ID})"),
     api_key: str = typer.Option(None, "--api-key", "-k", envvar="GERION_API_KEY", hide_input=True, help="M2M API key for authentication"),
@@ -40,16 +41,22 @@ def report(
     Generate a security report for the current project or specified filters.
     """
     # 0. Set Effective Context
-    effective_api_url = api_url or "http://localhost:8000"
+
+    effective_api_url = api_url
+    if not effective_api_url:
+        error("API URL not provided. Please set GERION_API_URL or use --api-url.")
+        raise typer.Abort()
+        
     effective_client_id = client_id or CLIENT_ID
     api_key_string = SecretString.from_typer_option(api_key)
 
     # 1. Authentication
     # We use the M2M authentication flow to get a JWT token
     if not api_key_string:
-        rprint("[red]Error: GERION_API_KEY environment variable is not set.[/red]")
-        rprint("Please set your API key to authenticate.")
+        error("GERION_API_KEY environment variable is not set.")
+        info("Please set your API key to authenticate.")
         raise typer.Abort()
+
 
     with console.status("[bold green]Authenticating..."):
         jwt_token = authenticate_with_api(effective_api_url, effective_client_id, api_key_string)
@@ -63,9 +70,9 @@ def report(
     current_branch = branch or metadata.get("branch_name")
     
     if not current_repo or current_repo == "local":
-        rprint("[yellow]Warning: Could not detect a git repository. Using 'local' context.[/yellow]")
+        warning("Could not detect a git repository. Using 'local' context.")
     
-    rprint(f"[bold blue]Generating report for:[/bold blue] {current_repo} ({current_branch})")
+    info(f"Generating report for: {current_repo} ({current_branch})")
     
     # 2. Fetch Findings
     filters = {
@@ -92,11 +99,11 @@ def report(
                 response.raise_for_status()
                 findings = response.json()
     except Exception as e:
-        rprint(f"[red]Error fetching report data: {str(e)}[/red]")
+        error(f"Error fetching report data: {str(e)}")
         raise typer.Abort()
 
     if not findings:
-        rprint("[yellow]No findings found for the specified filters.[/yellow]")
+        warning("No findings found for the specified filters.")
         return
 
     # 3. Sorting
@@ -114,10 +121,10 @@ def report(
     if format == ReportFormat.JSON:
         import json
         output_data = json.dumps(findings, indent=2)
-        if output:
-            with open(output, "w") as f:
+        if output_file:
+            with open(output_file, "w") as f:
                 f.write(output_data)
-            rprint(f"[green]Report saved to {output}[/green]")
+            success(f"Report saved to {output_file}")
         else:
             print(output_data)
             
@@ -126,22 +133,22 @@ def report(
         
     elif format == ReportFormat.MARKDOWN:
         md_content = generate_markdown_report(findings, current_repo, current_branch, include_description, include_mitigation, active_only)
-        if output:
-            with open(output, "w") as f:
+        if output_file:
+            with open(output_file, "w") as f:
                 f.write(md_content)
-            rprint(f"[green]Markdown report saved to {output}[/green]")
+            success(f"Markdown report saved to {output_file}")
         else:
             print(md_content)
             
     elif format == ReportFormat.PDF:
-        if not output:
-            rprint("[red]Error: PDF format requires an output file path.[/red]")
-            rprint("Please provide one using the [bold]--output / -o[/bold] flag.")
+        if not output_file:
+            error("PDF format requires an output file path.")
+            info("Please provide one using the --output-file / -o flag.")
             raise typer.Abort()
-        generate_pdf_report(findings, current_repo, current_branch, output, include_description, include_mitigation, active_only)
+        generate_pdf_report(findings, current_repo, current_branch, output_file, include_description, include_mitigation, active_only)
     else:
-        rprint(f"[red]Error: Unsupported format '{format}'.[/red]")
-        rprint("Supported formats are: [bold]text, json, markdown, pdf[/bold]")
+        error(f"Unsupported format '{format}'.")
+        info("Supported formats are: text, json, markdown, pdf")
         raise typer.Abort()
 
 def display_text_report(findings, repo, branch, include_description, include_mitigation, active_only):
@@ -186,7 +193,7 @@ def display_text_report(findings, repo, branch, include_description, include_mit
             table.add_row("", "", "", f"[green]Mitigation: {f.get('mitigation')}[/green]", "")
     
     console.print(table)
-    rprint(f"\n[bold]Total Findings:[/bold] {len(findings)}")
+    info(f"Total Findings: {len(findings)}")
 
 def generate_markdown_report(findings, repo, branch, include_description, include_mitigation, active_only):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -468,14 +475,14 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
             pdf.ln(3)
 
         pdf.output(output_path)
-        rprint(f"[green]PDF report successfully generated: {output_path}[/green]")
+        success(f"PDF report successfully generated: {output_path}")
 
     except ImportError:
-        rprint("[red]Error: fpdf2 library not found.[/red]")
-        rprint("Please install it using: [bold]poetry add fpdf2[/bold]")
+        error("fpdf2 library not found.")
+        info("Please install it using: poetry add fpdf2")
         raise typer.Abort()
     except Exception as e:
-        rprint(f"[red]Error generating PDF report: {str(e)}[/red]")
+        error(f"Error generating PDF report: {str(e)}")
         import traceback
         traceback.print_exc()
         raise typer.Abort()

@@ -80,15 +80,52 @@ def run_scan(
         "blue"
     )
     
+    # Output Priority:
+    # 1. Output File -> Save to file (no table, no API)
+    # 2. Format (explicitly requested) -> Print formatted output (no table, no API)
+    # 3. API -> Send to API (fallback to table if failed)
+    # 4. Fallback -> Print table (console mode)
+
     if output_file:
-        save_to_file(results, output_file, format)
-        debug("Results saved to file. API sending disabled when output file is specified.")
-    else:
-        if not all([api_url, effective_client_id, api_key_string]):
-            warning("No API credentials provided. Results will be displayed in console only.")
+        save_format = format
+        if not save_format:
+            lower_name = output_file.lower()
+            if lower_name.endswith('.json'):
+                save_format = OutputFormat.JSON
+            elif lower_name.endswith('.md') or lower_name.endswith('.markdown'):
+                save_format = OutputFormat.MARKDOWN
+            elif lower_name.endswith('.sarif'):
+                save_format = OutputFormat.SARIF
+            else:
+                warning(f"Could not infer format from file '{output_file}'. Defaulting to JSON.")
+                save_format = OutputFormat.JSON
+
+        save_to_file(results, output_file, save_format)
+        debug("Results saved to file. Console output and API sending suppressed.")
+    
+    elif format:
+        # If format is provided and output_file is NOT set, print to stdout.
+        if format == OutputFormat.TABLE:
             findings_table(results['findings'], scan_type)
-        else:
-            success_result = send_to_api(results, api_url, effective_client_id, api_key_string)
-            if not success_result:
-                warning("Results will be displayed in console only.")
-                findings_table(results['findings'], scan_type)
+            return results
+
+        try:
+            from gerion_cli.output import print_formatted
+            print_formatted(results, format)
+            debug(f"Results printed to console in {format} format.")
+        except Exception as e:
+            error(f"Error printing results: {e}")
+            findings_table(results['findings'], scan_type)
+
+    elif all([api_url, effective_client_id, api_key_string]):
+        success_result = send_to_api(results, api_url, effective_client_id, api_key_string)
+        if not success_result:
+            warning("Results will be displayed in console only.")
+            findings_table(results['findings'], scan_type)
+    else:
+        # Fallback: Local console mode.
+        if not api_key_string:
+            warning("No API key provided. Results will not be sent to the API.")
+        findings_table(results['findings'], scan_type)
+
+    return results

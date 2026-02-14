@@ -9,6 +9,7 @@ class OutputFormat(str, Enum):
     JSON = "json"
     MARKDOWN = "markdown"
     SARIF = "sarif"
+    TABLE = "table"
 
 class SecretString:
     """
