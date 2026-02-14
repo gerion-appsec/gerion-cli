@@ -1,17 +1,16 @@
 import typer
 from typing import Callable, Any, Dict, List, Optional
 from gerion_cli.core import (
-    get_metadata, 
-    LogLevel, 
-    OutputFormat, 
-    set_log_level, 
-    info, 
-    warning, 
-    error, 
-    success, 
-    panel, 
-    debug, 
-    SecretString, 
+    get_metadata,
+    LogLevel,
+    OutputFormat,
+    set_log_level,
+    info,
+    warning,
+    error,
+    panel,
+    debug,
+    SecretString,
     CLIENT_ID
 )
 from gerion_cli.api import send_to_api
@@ -19,6 +18,7 @@ from gerion_cli.output import save_to_file, findings_table
 
 def run_scan(
     scan_type: str,
+    tool_name: str,
     tool_runner: Callable[..., Any],
     tool_parser: Callable[[Any, Dict[str, Any]], List[Dict[str, Any]]],
     code_path: str,
@@ -46,7 +46,7 @@ def run_scan(
     metadata['scan_type'] = scan_type
     debug("Metadata collected successfully")
     
-    info(f"Running {scan_type} tool...")
+    info(f"Running {tool_name} scan...")
     
     # Run the tool with provided arguments
     try:

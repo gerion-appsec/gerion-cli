@@ -36,6 +36,7 @@ def sca_scan(
     """
     run_scan(
         scan_type="SCA",
+        tool_name="OSV-Scanner",
         tool_runner=run_sca_tool,
         tool_parser=parse_sca_tool_output,
         code_path=code_path,

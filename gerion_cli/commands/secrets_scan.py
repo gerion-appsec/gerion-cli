@@ -35,6 +35,7 @@ def secrets_scan(
     """
     run_scan(
         scan_type="Secrets",
+        tool_name="Gitleaks",
         tool_runner=run_secrets_tool,
         tool_parser=parse_secrets_tool_output,
         code_path=code_path,

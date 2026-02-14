@@ -23,6 +23,7 @@ def sast_scan(
     """
     run_scan(
         scan_type="SAST",
+        tool_name="Opengrep",
         tool_runner=run_sast_tool,
         tool_parser=parse_sast_tool_output,
         code_path=code_path,

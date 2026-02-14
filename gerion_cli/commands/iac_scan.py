@@ -39,6 +39,7 @@ def iac_scan(
     """
     run_scan(
         scan_type="IaC",
+        tool_name="KICS",
         tool_runner=run_iac_tool,
         tool_parser=parse_iac_tool_output,
         code_path=code_path,
@@ -51,4 +52,3 @@ def iac_scan(
         log_level=log_level,
         queries_path=queries_path
     )
- 
