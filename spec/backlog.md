@@ -11,25 +11,18 @@
 
 The CLI is **functional but early-stage**. Core scanning (SAST, SCA, Secrets, IaC)
 works, API integration is complete, and multiple output formats are supported.
-T1 stability fixes are done. Next priority is migrating to the definitive tool stack.
+T1 stability fixes and T2 tool migrations (code-level) are done.
+Remaining: Dockerfile update (#7) to reflect new tool stack.
 
-### Current tool stack
-| Category | Tool | License | Status |
-|----------|------|---------|--------|
-| SAST | Semgrep | Proprietary (post-license change) | **Replacing with Opengrep** |
-| SCA | Trivy (fs) | Apache 2.0 | **Replacing with OSV-Scanner** |
-| IaC | Trivy (config) | Apache 2.0 | **Replacing with KICS** |
-| Secrets | Gitleaks | MIT | **Keeping** |
+### Tool stack
+| Category | Tool | License | Install | Status |
+|----------|------|---------|---------|--------|
+| SAST | **Opengrep** | LGPL 2.1 | Binary (Nuitka self-contained) | **Active** |
+| SCA | **OSV-Scanner** | Apache 2.0 | Go binary | **Active** |
+| IaC | **KICS** | Apache 2.0 | Go binary | **Active** |
+| Secrets | **Gitleaks** | MIT | Go binary | **Active** |
 
-### Target tool stack
-| Category | Tool | License | Install |
-|----------|------|---------|---------|
-| SAST | **Opengrep** | LGPL 2.1 | Binary (Nuitka self-contained) |
-| SCA | **OSV-Scanner** | Apache 2.0 | Go binary |
-| IaC | **KICS** | Apache 2.0 | Go binary |
-| Secrets | **Gitleaks** | MIT | Go binary |
-
-> All binaries. All permissive licenses. Trivy eliminated completely.
+> All binaries. All permissive licenses. Trivy and Semgrep eliminated completely.
 
 ### Tool selection rationale
 - **Opengrep over Semgrep**: Community fork after Semgrep's Dec 2024 license change.

@@ -77,6 +77,7 @@ docker run --rm -v "$PWD:/code" gerion-cli iac-scan /code
 - `--output-file TEXT`     Save results to a file (disables API sending)
 - `--format [json|markdown|sarif]`  Output format (default: json)
 - `--log-level [debug|info|warning|error|critical]`  Set logging level
+- `--queries-path TEXT`    (IaC only) Path to KICS queries directory
 
 ### Environment Variables
 
@@ -95,16 +96,16 @@ export GERION_API_KEY="your-m2m-api-key"
 
 ## ✨ Features
 
-- 🐛 **SAST Scan**: Find code security issues and bugs using Semgrep.
-- 🔑 **Secrets Scan**: Detect API keys, passwords, and other secrets in your code.
-- 🛡️ **SCA (Dependency Analysis)**: Find vulnerabilities in your dependencies.
-- 🏗️ **IaC Scan**: Detect misconfigurations in Infrastructure as Code (Terraform, Kubernetes, etc.).
+- 🐛 **SAST Scan**: Find code security issues and bugs using **Opengrep**.
+- 🔑 **Secrets Scan**: Detect API keys, passwords, and other secrets in your code using **Gitleaks**.
+- 🛡️ **SCA (Dependency Analysis)**: Find vulnerabilities in your dependencies using **OSV-Scanner**.
+- 🏗️ **IaC Scan**: Detect misconfigurations in Infrastructure as Code (Terraform, Kubernetes, etc.) using **KICS**.
 - ☁️ **API Integration**: Optionally send results to a remote API.
 - 🖨️ **Multiple Output Formats**: JSON, Markdown, SARIF.
 - 🎨 **Beautiful Console Output**: Rich tables and colored logs.
 - 🧠 **Automatic Git Metadata**: Each scan includes repo, branch, and commit info.
 - 🔒 **Secure Credentials**: Secrets are never printed in logs.
-- 🐳 **All-in-One Docker Image**: No need to install Trivy or Gitleaks manually.
+- 🐳 **All-in-One Docker Image**: No need to install tools manually.
 
 ### 💎 Open Core Architecture
 

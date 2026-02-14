@@ -28,10 +28,11 @@ def sca_scan(
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
-    Scan project dependencies for known vulnerabilities using Trivy.
+    Scan project dependencies for known vulnerabilities using OSV-Scanner.
     
     This command analyzes package dependencies (npm, pip, maven, etc.) and identifies
-    known CVEs (Common Vulnerabilities and Exposures) in the installed packages.
+    known CVEs (Common Vulnerabilities and Exposures) in the installed packages using
+    OSV-Scanner.
     Results can be sent to the API Gateway or saved to a local file.
     
     Examples:
@@ -56,7 +57,7 @@ def sca_scan(
     metadata = get_metadata(code_path=code_path)
     metadata['scan_type'] = 'SCA'
     debug("Metadata collected successfully")
-    info("Running Trivy scan...")
+    info("Running OSV-Scanner scan...")
     sca_tool_output = run_sca_tool(code_path, timeout=timeout)
     if sca_tool_output is None:
         error("Failed to run SCA scan")

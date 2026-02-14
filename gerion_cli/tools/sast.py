@@ -15,16 +15,16 @@ import tempfile
 
 def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
     """
-    Run SAST scan using Semgrep.
+    Run SAST scan using Opengrep.
     If Premium (HAS_PRO): Runs Structural Search (Context + Reachability) to enrich findings.
     
     Returns:
-        list: enriched_semgrep_results
+        list: enriched_opengrep_results
     """
     results = []
 
-    if not shutil.which("semgrep"):
-        print("Semgrep tool not found in PATH.")
+    if not shutil.which("opengrep"):
+        print("Opengrep tool not found in PATH.")
         return []
 
     # Create a temporary file for the report
@@ -34,18 +34,19 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
     # Calculate tool timeout (allow 10s buffer for CLI overhead)
     tool_timeout = max(1, timeout - 10)
 
-    # 1. Run Semgrep (OSS)
+    # 1. Run Opengrep (OSS)
     command = [
-        "semgrep", "scan",
+        "opengrep", "scan",
         "--config", "auto",
         "--timeout", str(tool_timeout),
         "--json",
         "--output", report_path,
+        "--disable-version-check", # Optimization: skip version check for speed
         code_path
     ]
     
     try:
-        # Semgrep returns non-zero on findings, so check=False
+        # Opengrep returns non-zero on findings, so check=False
         subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout)
         
         if os.path.exists(report_path):

@@ -144,10 +144,10 @@ def parse_secrets_tool_output(output, metadata):
 
 def parse_sca_tool_output(output, metadata):
     """
-    Parses the output of a sca tool and formats it as a set of findings.
+    Parses the output of OSV-Scanner and formats it as a set of findings.
 
     Args:
-        output: A list of dictionaries containing sca findings.
+        output: A list of result objects from OSV-Scanner (the 'results' list).
         metadata: Metadata about the scan.
 
     Returns:
@@ -156,38 +156,72 @@ def parse_sca_tool_output(output, metadata):
     results = []
     seen_finding_ids = set()
     
-    for e in output:
-        if 'Vulnerabilities' in e:
-            for f in e['Vulnerabilities']:
-                # Get package ID safely - try different possible field names
-                pkg_id = f.get('PkgID') or f.get('PackageID') or f.get('Package') or f.get('PkgName', 'unknown')
-                pkg_name = f.get('PkgName') or f.get('Package') or pkg_id
-                installed_version = f.get('InstalledVersion') or f.get('Version') or 'unknown'
-                vulnerability_id = f.get('VulnerabilityID') or f.get('CVE') or 'unknown'
-                description = f.get('Description') or 'No description available'
-                severity = f.get('Severity') or 'Unknown'
-                status = f.get('Status') or 'Unknown'
-                fixed_version = f.get('FixedVersion') or f.get('FixVersion')
+    # Iterate over file results
+    for result_item in output:
+        # OSV-Scanner 1.5+ structure: "source": {"path": "..."}
+        source_path = result_item.get('source', {}).get('path', 'unknown')
+        
+        # Iterate over packages in the file
+        for pkg_wrapper in result_item.get('packages', []):
+            pkg = pkg_wrapper.get('package', {})
+            pkg_name = pkg.get('name', 'unknown')
+            pkg_version = pkg.get('version', 'unknown')
+            
+            # Iterate over vulnerabilities for the package
+            for vuln in pkg_wrapper.get('vulnerabilities', []):
+                vuln_id = vuln.get('id', 'unknown')
+                aliases = vuln.get('aliases', [])
+                summary = vuln.get('summary', 'No summary available')
+                details = vuln.get('details', 'No details available')
+                
+                # Severity Extraction
+                # Try database_specific.severity first (e.g. "MODERATE")
+                severity_raw = vuln.get('database_specific', {}).get('severity', 'UNKNOWN')
+                
+                severity_map = {
+                    'CRITICAL': 'CRITICAL',
+                    'HIGH': 'HIGH',
+                    'MODERATE': 'MEDIUM',
+                    'LOW': 'LOW',
+                    'UNKNOWN': 'LOW',
+                    'INFO': 'LOW'
+                }
+                severity = severity_map.get(severity_raw.upper(), 'LOW')
+                
+                # Fix Version Extraction
+                fixed_version = None
+                for affected in vuln.get('affected', []):
+                    for r in affected.get('ranges', []):
+                        for event in r.get('events', []):
+                            if 'fixed' in event:
+                                fixed_version = event['fixed']
+                                break
+                        if fixed_version: break
+                    if fixed_version: break
+                
+                # CVE Extraction (prefer CVE alias)
+                cve = next((alias for alias in aliases if alias.startswith('CVE-')), vuln_id)
                 
                 template = generate_finding_template(metadata)   
-                finding_id = str(generate_unique_id([e.get('Target', 'unknown'), vulnerability_id, str(pkg_id)]))
+                # Unique ID based on file, vuln ID, package, and version
+                finding_id = str(generate_unique_id([source_path, vuln_id, pkg_name, pkg_version]))
                 
                 # Check if the finding_id has already been processed
                 if finding_id not in seen_finding_ids:
                     result = {
                         'finding_id': finding_id,
-                        'title': f"{vulnerability_id} - {pkg_name}",
-                        'description': description,
-                        'mitigation': f"Update the package {pkg_name} if it has fix. Status: {status}. Fixed in: {fixed_version if fixed_version else 'No fix'}",
+                        'title': f"{vuln_id} - {pkg_name}",
+                        'description': summary,
+                        'mitigation': f"Update {pkg_name} to {fixed_version}" if fixed_version else f"Update {pkg_name} to a non-vulnerable version.",
                         'severity': severity,
                         'security_scope': 'Code',
                         'scan_type': 'SCA',
-                        'file_path': e.get('Target', 'unknown'),
+                        'file_path': source_path,
                         'component_name': pkg_name,
-                        'component_version': installed_version,
+                        'component_version': pkg_version,
                         'component_fix': fixed_version,
-                        'cwe': f.get('CweIDs') if 'CweIDs' in f else None,
-                        'cve': vulnerability_id
+                        'cwe': vuln.get('database_specific', {}).get('cwe_ids', []),
+                        'cve': cve
                     }
 
                     final_finding = {**template, **result}
@@ -203,17 +237,17 @@ def parse_sca_tool_output(output, metadata):
 
 def parse_sast_tool_output(output, metadata):
     """
-    Parses the output of a SAST tool (Semgrep) and formats it as a set of findings.
+    Parses the output of a SAST tool (Opengrep) and formats it as a set of findings.
     
     Args:
-        output: List of Semgrep result objects.
+        output: List of Opengrep result objects.
         metadata: Metadata about the scan.
     """
     results = []
     seen_ids = set()
     
     for item in output:
-        # Semgrep specific fields
+        # Opengrep specific fields
         rule_id = item.get('check_id', 'unknown')
         file_path = item.get('path', 'unknown')
         start_line = item.get('start', {}).get('line', 0)
@@ -276,69 +310,67 @@ def parse_sast_tool_output(output, metadata):
 
 def parse_iac_tool_output(output, metadata):
     """
-    Parses the output of a Trivy IaC scan and formats it as a set of findings.
+    Parses the output of a KICS IaC scan and formats it as a set of findings.
     Args:
-        output: A list of dictionaries containing IaC findings.
+        output: A list of KICS query objects (from the 'queries' key).
         metadata: Metadata about the scan.
     Returns:
         A list of dictionaries representing the unique findings.
     """
     results = []
     seen_finding_ids = set()
-    for e in output:
-        if 'Misconfigurations' in e:
-            for f in e['Misconfigurations']:
-                id_str = f.get('ID') or f.get('RuleID') or f.get('AVDID') or 'unknown'
-                title = f.get('Title') or f.get('ID') or 'IaC Misconfiguration'
-                description = f.get('Description') or 'No description available'
-                severity = f.get('Severity') or 'Unknown'
-                status = f.get('Status') or 'Unknown'
-                file_path = e.get('Target', 'unknown')
-                # First try to get StartLine/Line from the root level
-                line = f.get('StartLine') or f.get('Line') or 0
-                
-                # If not found at root level, try inside CauseMetadata
-                # Trivy sometimes returns StartLine and EndLine inside CauseMetadata
-                # The structure is: Misconfigurations[].CauseMetadata.StartLine
-                if line == 0:
-                    cause_metadata = f.get('CauseMetadata', {})
-                    if cause_metadata and isinstance(cause_metadata, dict):
-                        # Try different possible field names for StartLine
-                        if 'StartLine' in cause_metadata:
-                            line = cause_metadata['StartLine']
-                        elif 'start_line' in cause_metadata:
-                            line = cause_metadata['start_line']
-                        elif 'startLine' in cause_metadata:
-                            line = cause_metadata['startLine']
-                        elif 'Line' in cause_metadata:
-                            line = cause_metadata['Line']
-                        elif 'line' in cause_metadata:
-                            line = cause_metadata['line']
-                
-                # Convert to int if it's a string or number, or use None if not found (0 means not found)
-                if line == 0:
-                    line = None
-                elif line is not None:
-                    try:
-                        line = int(line)
-                    except (ValueError, TypeError):
-                        line = None
+    
+    for query in output:
+        # Query level fields
+        query_name = query.get('query_name', 'Unknown Query')
+        query_id = query.get('query_id', 'unknown')
+        severity_raw = query.get('severity', 'INFO').upper()
+        description = query.get('description', 'No description available')
+        query_category = query.get('category', 'IaC')
+        
+        # Map Severity
+        severity_map = {
+            'CRITICAL': 'CRITICAL',
+            'HIGH': 'HIGH',
+            'MEDIUM': 'MEDIUM',
+            'LOW': 'LOW',
+            'INFO': 'LOW',
+            'TRACE': 'LOW'
+        }
+        severity = severity_map.get(severity_raw, 'LOW')
+        
+        # Iterate over files where this query matched
+        for f in query.get('files', []):
+            file_path = f.get('file_name', 'unknown')
+            line = f.get('line', 0)
+            issue_type = f.get('issue_type', 'unknown')
+            expected_value = f.get('expected_value', 'See documentation')
+            actual_value = f.get('actual_value', 'unknown')
+            
+            # Create unique ID
+            finding_id = str(generate_unique_id([file_path, query_id, str(line)]))
+            
+            if finding_id not in seen_finding_ids:
                 template = generate_finding_template(metadata)
-                finding_id = str(generate_unique_id([file_path, id_str, title]))
-                if finding_id not in seen_finding_ids:
-                    result = {
-                        'finding_id': finding_id,
-                        'title': title,
-                        'description': description,
-                        'mitigation': f.get('Resolution') or f.get('Message') or 'See documentation.',
-                        'severity': severity,
-                        'security_scope': 'IaC',
-                        'scan_type': 'IaC',
-                        'file_path': file_path,
-                        'line_number': line,
-                        'cwe': f.get('CWE', None),
-                        'cve': None
-                    }
-                    results.append({**template, **result})
-                    seen_finding_ids.add(finding_id)
+                
+                result = {
+                    'finding_id': finding_id,
+                    'title': query_name,
+                    'description': f"{description}\nIssue Type: {issue_type}",
+                    'mitigation': f"Expected: {expected_value}",
+                    'severity': severity,
+                    'security_scope': 'IaC',
+                    'scan_type': 'IaC',
+                    'file_path': file_path,
+                    'line_number': line,
+                    'component_name': query_category, # Use category as component name
+                    'component_version': None,
+                    'component_fix': None,
+                    'cwe': None, # KICS usually doesn't provide CWE in JSON output directly easily mapping
+                    'cve': None
+                }
+                
+                results.append({**template, **result})
+                seen_finding_ids.add(finding_id)
+                
     return results 

@@ -30,9 +30,9 @@ def sast_scan(
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
-    Scan codebase for security vulnerabilities using Semgrep (SAST).
+    Scan codebase for security vulnerabilities using Opengrep (SAST).
     
-    This command performs a Static Application Security Testing (SAST) using Semgrep to identify
+    This command performs a Static Application Security Testing (SAST) using Opengrep to identify
     potential vulnerabilities in the code. If Premium is active, it also performs 
     Deep Reachability Analysis using Atom.
     """
@@ -45,7 +45,7 @@ def sast_scan(
     metadata = get_metadata(code_path=code_path)
     metadata['scan_type'] = 'SAST'
     debug("Metadata collected successfully")
-    info("Running Semgrep scan...")
+    info("Running Opengrep scan...")
     
     # Run Tool
     sast_results = run_sast_tool(code_path, timeout=timeout)

@@ -2,11 +2,11 @@
 
 ## 🎯 Purpose & Scope
 
-**Gerion CLI** is a command-line interface tool for performing security scans on codebases. It integrates multiple security scanning tools (Gitleaks, Trivy) to detect secrets, vulnerable dependencies, and infrastructure misconfigurations, and can send results to the Gerion API Gateway for centralized management.
+**Gerion CLI** is a command-line interface tool for performing security scans on codebases. It integrates multiple security scanning tools (Gitleaks, OSV-Scanner, KICS, Opengrep) to detect secrets, vulnerable dependencies, and infrastructure misconfigurations, and can send results to the Gerion API Gateway for centralized management.
 
 ### Core Responsibilities
 - **Security Scanning**: Execute SAST (Static Analysis), Secrets detection, SCA (Software Component Analysis), and IaC (Infrastructure as Code) scans
-- **Tool Integration**: Orchestrate external security tools (Semgrep, Gitleaks, Trivy) in a unified interface
+- **Tool Integration**: Orchestrate external security tools (Opengrep, Gitleaks, OSV-Scanner, KICS) in a unified interface
 - **API Integration**: Authenticate and send scan results to Gerion API Gateway using M2M API keys
 - **Output Generation**: Support multiple output formats (JSON, Markdown, SARIF) and console display
 - **Metadata Collection**: Automatically extract Git repository metadata (branch, commit, author)
@@ -15,7 +15,7 @@
 
 ### System Components
 ```
-Gerion CLI → Security Tools (Gitleaks/Trivy) → Parse Results → API Gateway → Data API
+Gerion CLI → Security Tools (Gitleaks/OSV/KICS/Opengrep) → Parse Results → API Gateway → Data API
                 ↓
          Local File Output (optional)
 ```
@@ -29,7 +29,7 @@ Gerion CLI → Security Tools (Gitleaks/Trivy) → Parse Results → API Gateway
 - **Tool Agnostic**: Abstract security tool execution behind unified interface
 - **Flexible Output**: Support both API submission and local file output
 - **CI/CD Ready**: Designed for integration in CI/CD pipelines with environment variable support
-- **Docker Native**: Single Docker image with all dependencies (Trivy, Gitleaks, CLI)
+- **Docker Native**: Single Docker image with all dependencies
 - **Metadata Aware**: Automatic Git metadata extraction for traceability
 
 ## 🔧 Technical Stack
@@ -45,8 +45,9 @@ Gerion CLI → Security Tools (Gitleaks/Trivy) → Parse Results → API Gateway
 
 ### External Tools
 - **Gitleaks**: Secrets detection in code repositories
-- **Trivy**: SCA (vulnerability scanning) and IaC (infrastructure misconfiguration) scanning
-- **Semgrep**: SAST (Static Application Security Testing) for code patterns and bugs
+- **OSV-Scanner**: SCA (vulnerability scanning)
+- **KICS**: IaC (infrastructure misconfiguration) scanning
+- **Opengrep**: SAST (Static Application Security Testing) for code patterns and bugs
 
 ### Project Structure
 ```
@@ -212,24 +213,24 @@ gerion-cli iac-scan [CODE_PATH] [OPTIONS]
 ```
 
 ## 🔍 Tool Integration
-
-### Gitleaks Integration (Secrets)
-- **Command**: `gitleaks dir <code_path> --exit-code 0 -f json -r <report_path>`
-- **Output Format**: JSON array of secret findings
-- **Parsing**: Extracts file path, line number, rule ID, and secret match
-- **Finding ID**: SHA256 hash of `[file_path, match_text, rule_id]`
-
-### Trivy SCA Integration
-- **Command**: `trivy fs --scanners vuln -f json --exit-code 0 -o <report_path> <code_path>`
-- **Output Format**: JSON with `Results` array containing vulnerabilities
-- **Parsing**: Extracts package information, CVE IDs, severity, and fixed versions
-- **Finding ID**: SHA256 hash of `[target, vulnerability_id, package_id]`
-
-### Trivy IaC Integration
-- **Command**: `trivy config -f json -o <report_path> <code_path>`
-- **Output Format**: JSON with `Results` array containing misconfigurations
-- **Parsing**: Extracts misconfiguration ID, title, description, severity, and resolution
-- **Finding ID**: SHA256 hash of `[file_path, id_str, title]`
+ 
+ ### Gitleaks Integration (Secrets)
+ - **Command**: `gitleaks dir <code_path> --exit-code 0 -f json -r <report_path>`
+ - **Output Format**: JSON array of secret findings
+ - **Parsing**: Extracts file path, line number, rule ID, and secret match
+ - **Finding ID**: SHA256 hash of `[file_path, match_text, rule_id]`
+ 
+ ### OSV-Scanner Integration (SCA)
+ - **Command**: `osv-scanner scan --format json --output <report_path> <code_path>`
+ - **Output Format**: JSON with `results` array containing packages and vulnerabilities
+ - **Parsing**: Extracts package information, CVE IDs, severity, and fixed versions
+ - **Finding ID**: SHA256 hash of `[target, vulnerability_id, package_name, package_version]`
+ 
+ ### KICS Integration (IaC)
+ - **Command**: `kics scan --path <code_path> --output-path <dir> --report-formats json ...`
+ - **Output Format**: JSON with `queries` array containing misconfigurations
+ - **Parsing**: Extracts misconfiguration ID, title, description, severity, and resolution
+ - **Finding ID**: SHA256 hash of `[file_path, id_str, line]`
 
 ## 📊 Output Formats
 
