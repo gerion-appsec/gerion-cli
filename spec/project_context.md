@@ -9,7 +9,7 @@
 ## Architecture Vision
 
 Gerion CLI is a **scanner orchestrator** and **findings normalizer**. It does NOT implement
-its own security analysis. It wraps external tools (Gitleaks, Trivy, Semgrep/Opengrep),
+its own security analysis. It wraps external tools (Gitleaks, OSV-Scanner, KICS, Opengrep),
 normalizes their output into a unified Finding model, and dispatches results to the
 Gerion API Gateway or local files.
 
@@ -56,13 +56,13 @@ Gerion API Gateway or local files.
 | Package Manager | Poetry | |
 | Build | PyInstaller (single binary) | |
 
-### External Security Tools (current — migrating, see backlog T2)
-| Tool | Purpose | Command Pattern | Status |
-|------|---------|----------------|--------|
-| Gitleaks | Secrets detection | `gitleaks dir <path> --exit-code 0 -f json -r <report>` | **Keeping** (MIT) |
-| Semgrep | SAST (code analysis) | `semgrep scan --config auto --json --output <report> <path>` | **Replacing** with Opengrep (LGPL 2.1) |
-| Trivy | SCA (vuln scanning) | `trivy fs --scanners vuln -f json --exit-code 0 -o <report> <path>` | **Replacing** with OSV-Scanner (Apache 2.0) |
-| Trivy | IaC (misconfig scanning) | `trivy config -f json -o <report> <path>` | **Replacing** with KICS (Apache 2.0) |
+### External Security Tools
+| Tool | Purpose | Command Pattern | License |
+|------|---------|----------------|---------|
+| Gitleaks | Secrets detection | `gitleaks dir <path> --exit-code 0 -f json -r <report>` | MIT |
+| Opengrep | SAST (code analysis) | `opengrep scan --config auto --json --output <report> --disable-version-check <path>` | LGPL 2.1 |
+| OSV-Scanner | SCA (vuln scanning) | `osv-scanner scan --format json --output <report> -r <path>` | Apache 2.0 |
+| KICS | IaC (misconfig scanning) | `kics scan --path <path> --output-path <dir> --report-formats json` | Apache 2.0 |
 
 ## Source Tree
 
@@ -78,9 +78,9 @@ gerion-cli/
 │   ├── commands/
 │   │   ├── __init__.py             # Empty
 │   │   ├── secrets_scan.py         # Secrets scan command (Gitleaks)
-│   │   ├── sca_scan.py             # SCA scan command (Trivy fs)
-│   │   ├── iac_scan.py             # IaC scan command (Trivy config)
-│   │   ├── sast_scan.py            # SAST scan command (Semgrep)
+│   │   ├── sca_scan.py             # SCA scan command (OSV-Scanner)
+│   │   ├── iac_scan.py             # IaC scan command (KICS)
+│   │   ├── sast_scan.py            # SAST scan command (Opengrep)
 │   │   └── report.py               # Report generation command (fetches from API)
 │   ├── core/
 │   │   ├── __init__.py             # Exports: SecretString, LogLevel, OutputFormat, logging funcs, get_metadata, CLIENT_ID
@@ -95,9 +95,9 @@ gerion-cli/
 │   ├── tools/
 │   │   ├── __init__.py             # Exports: run_* and parse_* functions for all tools
 │   │   ├── secrets.py              # Gitleaks runner
-│   │   ├── sca.py                  # Trivy SCA runner
-│   │   ├── iac.py                  # Trivy IaC runner
-│   │   ├── sast.py                 # Semgrep runner + Premium StructuralEngine hook
+│   │   ├── sca.py                  # OSV-Scanner SCA runner
+│   │   ├── iac.py                  # KICS IaC runner
+│   │   ├── sast.py                 # Opengrep runner + Premium StructuralEngine hook
 │   │   └── parser.py               # Output parsers for all tools + finding template
 │   └── utils/
 │       └── __init__.py             # Empty
@@ -108,7 +108,7 @@ gerion-cli/
 │   ├── project_context.md          # This document
 │   ├── agent_rules.md              # LLM agent development rules
 │   └── backlog.md                  # Development backlog
-├── Dockerfile                      # Multi-stage: builder (Trivy+Gitleaks) -> CLI (PyInstaller) -> final (Alpine)
+├── Dockerfile                      # Multi-stage: builder (tools) -> CLI (PyInstaller) -> final (Debian slim)
 ├── pyproject.toml                  # Poetry config
 └── requirements.txt                # Python dependencies (legacy)
 ```
@@ -194,8 +194,8 @@ CLI (JWT Bearer)  -> GET  /api/v1/findings -> Fetch for report
 ## Docker Image
 
 Multi-stage build:
-1. **Builder**: Downloads Trivy + Gitleaks binaries, builds CLI with PyInstaller
-2. **Final**: Python 3.13 slim + `pip install semgrep==1.97.0` + copies binaries
+1. **Builder**: Downloads Opengrep, OSV-Scanner, KICS, and Gitleaks binaries, builds CLI with PyInstaller
+2. **Final**: Python 3.13 slim + copies binaries
 3. Runs as non-root `gerion` user (UID 1000)
 4. Volumes: `/code` (scan target), `/output` (results)
 
@@ -208,6 +208,6 @@ Multi-stage build:
 
 ## Key Constraints
 - **Python 3.12+**: Required minimum version
-- **External tools**: Gitleaks, Trivy, and Semgrep must be available in PATH
+- **External tools**: Gitleaks, Opengrep, OSV-Scanner, and KICS must be available in PATH
 - **API Gateway**: M2M authentication required for API features
 - **Premium overlay**: Pro features loaded conditionally; core must work without them

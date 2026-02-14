@@ -59,7 +59,9 @@ gerion-cli/
 │   ├── commands/              # CLI command handlers
 │   │   ├── secrets_scan.py   # Secrets scanning command
 │   │   ├── sca_scan.py       # SCA scanning command
-│   │   └── iac_scan.py       # IaC scanning command
+│   │   ├── iac_scan.py       # IaC scanning command
+│   │   ├── sast_scan.py      # SAST scanning command
+│   │   └── report.py         # Report generation command
 │   ├── core/                  # Core functionality
 │   │   ├── logging.py        # Logging configuration (Rich-based)
 │   │   ├── metadata.py       # Git metadata extraction
@@ -69,9 +71,9 @@ gerion-cli/
 │   │   └── tables.py         # Console table display
 │   ├── tools/                # Security tool integration
 │   │   ├── secrets.py        # Gitleaks integration
-│   │   ├── sca.py            # Trivy SCA integration
-│   │   ├── iac.py            # Trivy IaC integration
-│   │   ├── sast.py           # Semgrep SAST integration
+│   │   ├── sca.py            # OSV-Scanner SCA integration
+│   │   ├── iac.py            # KICS IaC integration
+│   │   ├── sast.py           # Opengrep SAST integration
 │   │   └── parser.py         # Tool output parsing
 │   ├── utils/                # Utility functions
 │   └── main.py               # CLI application entry point
@@ -115,7 +117,7 @@ The CLI uses Machine-to-Machine (M2M) API key authentication to communicate with
 gerion-cli sast-scan [CODE_PATH] [OPTIONS]
 ```
 - **Purpose**: Detect security vulnerabilities and code quality issues
-- **Tool**: Semgrep
+- **Tool**: Opengrep
 - **Output**: List of findings with detailed message and severity
 
 ### Secrets Scan
@@ -131,7 +133,7 @@ gerion-cli secrets-scan [CODE_PATH] [OPTIONS]
 gerion-cli sca-scan [CODE_PATH] [OPTIONS]
 ```
 - **Purpose**: Detect vulnerable dependencies in project dependencies
-- **Tool**: Trivy filesystem scanner (vulnerability mode)
+- **Tool**: OSV-Scanner
 - **Output**: List of CVEs with affected packages and versions
 
 ### IaC Scan
@@ -139,7 +141,7 @@ gerion-cli sca-scan [CODE_PATH] [OPTIONS]
 gerion-cli iac-scan [CODE_PATH] [OPTIONS]
 ```
 - **Purpose**: Detect misconfigurations in Infrastructure as Code files
-- **Tool**: Trivy config scanner
+- **Tool**: KICS
 - **Output**: List of IaC misconfigurations with severity and remediation
 
 ### Common Options
@@ -148,7 +150,9 @@ gerion-cli iac-scan [CODE_PATH] [OPTIONS]
 - `--client-id TEXT`: Client ID (overrides `GERION_CLIENT_ID`)
 - `--output-file TEXT`: Save results to file (disables API sending)
 - `--format [json|markdown|sarif]`: Output format for file saving
+- `--timeout INT`: Tool execution timeout in seconds (default: 180)
 - `--log-level [debug|info|warning|error|critical]`: Logging verbosity
+- `--queries-path TEXT`: (IaC only) Path to KICS queries directory
 
 ## 🗃️ Data Models
 
@@ -255,13 +259,13 @@ gerion-cli iac-scan [CODE_PATH] [OPTIONS]
 ## 🐳 Docker Integration
 
 ### Multi-Stage Build
-1. **Builder Stage**: Downloads and installs Trivy and Gitleaks binaries
+1. **Builder Stage**: Downloads and installs Opengrep, OSV-Scanner, KICS, and Gitleaks binaries
 2. **CLI Builder Stage**: Builds Python CLI using PyInstaller
-3. **Final Stage**: Combines all binaries in minimal Alpine image
+3. **Final Stage**: Combines all binaries in minimal Debian slim image
 
 ### Docker Image Features
 - **Single Binary**: CLI compiled to single executable via PyInstaller
-- **All Tools Included**: Trivy and Gitleaks pre-installed
+- **All Tools Included**: Opengrep, OSV-Scanner, KICS, and Gitleaks pre-installed
 - **Non-Root User**: Runs as `gerion` user (UID 1000) for security
 - **Volume Mounts**: `/code` for code to scan, `/output` for output files
 
@@ -304,7 +308,7 @@ docker run --rm -v "$PWD:/code" \
 4. **Docker Tests**: Container build and execution
 
 ### Test Data Requirements
-- **Mock Tool Output**: Sample Gitleaks and Trivy JSON outputs
+- **Mock Tool Output**: Sample Gitleaks, OSV-Scanner, KICS, and Opengrep JSON outputs
 - **Mock API Responses**: Authentication and findings submission responses
 - **Test Repositories**: Sample codebases with known vulnerabilities
 

@@ -50,7 +50,7 @@ Remaining: Dockerfile update (#7) to reflect new tool stack.
 | Tier | Goal | Items |
 |------|------|-------|
 | **T1** | Bugs & Stability | ~~#1, #2, #3~~ DONE |
-| **T2** | Tool Migration — Opengrep + OSV-Scanner + KICS | #4, #5, #6, #7 |
+| **T2** | Tool Migration — Opengrep + OSV-Scanner + KICS | ~~#4, #5, #6~~ DONE, #7 |
 | **T3** | Architecture & Quality — DRY, models, tests | #8, #9, #10, #11 |
 | **T4** | Features — New capabilities | #12, #13, #14 |
 
@@ -419,3 +419,6 @@ These are NOT backlog items for the CLI:
 | #1 | Tool binary availability checks | v0.1.0 | `shutil.which()` in all 4 tool runners |
 | #2 | Tempfile for report paths | v0.1.0 | `tempfile.NamedTemporaryFile` in all 4 runners |
 | #3 | Subprocess timeouts | v0.1.0 | `timeout=180` + dual timeout (tool-level + subprocess) |
+| #4 | Replace Semgrep with Opengrep (SAST) | v0.1.0 | `opengrep` binary, `--disable-version-check`, same output format |
+| #5 | Replace Trivy SCA with OSV-Scanner | v0.1.0 | `osv-scanner scan --format json -r`, UNKNOWN→LOW severity mapping |
+| #6 | Replace Trivy IaC with KICS | v0.1.0 | `kics scan`, `--queries-path` auto-detection, 2400+ queries |
