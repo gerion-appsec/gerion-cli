@@ -9,10 +9,10 @@
 
 ## Strategic Context (post-v0.1.0)
 
-The CLI is **functional but early-stage**. Core scanning (SAST, SCA, Secrets, IaC)
-works, API integration is complete, and multiple output formats are supported.
-T1 stability fixes and T2 tool migrations are done (including Dockerfile).
-Next priority: T3 architecture and quality improvements.
+The CLI is **functional and stable**. All planned tiers (T1–T4) are complete.
+Core scanning works with the new tool stack (Opengrep, OSV-Scanner, KICS,
+Gitleaks), commands share a DRY base, output formats are typed, unit tests
+exist, and feature additions (scan-all, duration tracking) are in place.
 
 ### Tool stack
 | Category | Tool | License | Install | Status |
@@ -40,8 +40,7 @@ Next priority: T3 architecture and quality improvements.
   as essentially unmaintained.
 
 ### Known limitations
-- **No tests**: Zero test coverage. High regression risk.
-- **Raw dict models**: Findings use raw dicts (no Pydantic). Evaluated in #9 —
+- **Raw dict models**: Findings use raw dicts (no Pydantic in CLI). Evaluated in #9 —
   validation lives in the API Gateway (`InputFinding`), duplicating models here
   would create a sync burden with no real benefit.
 

@@ -4,7 +4,7 @@
 **Project**: Gerion CLI v0.1.0 (pyproject.toml)
 **Type**: Python CLI Application
 **Purpose**: Unified command-line interface for security scanning (SAST, SCA, Secrets, IaC) with API Gateway integration and multi-format output.
-**Tests**: 0 test files. Only `tests/__init__.py` exists (empty).
+**Tests**: 5 test files + 4 JSON fixtures in `tests/`. Covers parsers, metadata, auth, finding template, output formats.
 
 ## Architecture Vision
 
@@ -76,18 +76,20 @@ gerion-cli/
 │   │   ├── auth.py                 # M2M API key -> JWT authentication
 │   │   └── client.py               # HTTP client for findings submission
 │   ├── commands/
-│   │   ├── __init__.py             # Empty
-│   │   ├── secrets_scan.py         # Secrets scan command (Gitleaks)
-│   │   ├── sca_scan.py             # SCA scan command (OSV-Scanner)
-│   │   ├── iac_scan.py             # IaC scan command (KICS)
-│   │   ├── sast_scan.py            # SAST scan command (Opengrep)
+│   │   ├── __init__.py             # Exports all command functions
+│   │   ├── base.py                 # Shared scan orchestration (run_scan + duration tracking)
+│   │   ├── secrets_scan.py         # Secrets scan command (Gitleaks) — thin wrapper
+│   │   ├── sca_scan.py             # SCA scan command (OSV-Scanner) — thin wrapper
+│   │   ├── iac_scan.py             # IaC scan command (KICS) — thin wrapper
+│   │   ├── sast_scan.py            # SAST scan command (Opengrep) — thin wrapper
+│   │   ├── scan_all.py             # Runs all 4 scans sequentially
 │   │   └── report.py               # Report generation command (fetches from API)
 │   ├── core/
 │   │   ├── __init__.py             # Exports: SecretString, LogLevel, OutputFormat, logging funcs, get_metadata, CLIENT_ID
 │   │   ├── config.py               # __version__, CLIENT_ID
-│   │   ├── logging.py              # GerionLogger (Rich-based), LogLevel, OutputFormat enums
+│   │   ├── logging.py              # GerionLogger (Rich-based), LogLevel enum
 │   │   ├── metadata.py             # Git metadata extraction + CI/CD env var detection
-│   │   └── types.py                # SecretString wrapper (Pydantic SecretStr + Typer compat)
+│   │   └── types.py                # SecretString wrapper, OutputFormat enum
 │   ├── output/
 │   │   ├── __init__.py             # Exports: save_to_file, findings_table
 │   │   ├── formats.py              # JSON, Markdown, SARIF file output
@@ -102,12 +104,23 @@ gerion-cli/
 │   └── utils/
 │       └── __init__.py             # Empty
 ├── tests/
-│   └── __init__.py                 # Empty (NO tests exist)
+│   ├── conftest.py                 # Shared fixtures (mock_metadata, load_fixture)
+│   ├── fixtures/                   # Tool JSON output samples
+│   │   ├── gitleaks.json
+│   │   ├── osv.json
+│   │   ├── opengrep.json
+│   │   └── kics.json
+│   ├── test_parser.py              # Parser tests for all 4 tools
+│   ├── test_metadata.py            # Git/CI metadata extraction tests
+│   ├── test_finding.py             # Finding template + unique ID + redact tests
+│   ├── test_auth.py                # M2M API authentication tests
+│   └── test_output.py              # JSON/Markdown/SARIF output tests
 ├── spec/
 │   ├── plan.md                     # Technical specification
 │   ├── project_context.md          # This document
 │   ├── agent_rules.md              # LLM agent development rules
-│   └── backlog.md                  # Development backlog
+│   ├── backlog.md                  # Development backlog
+│   └── tool_output_audit.md        # #9 audit results (no model changes needed)
 ├── Dockerfile                      # Multi-stage: builder (tools) -> CLI (PyInstaller) -> final (Debian slim)
 ├── pyproject.toml                  # Poetry config
 └── requirements.txt                # Python dependencies (legacy)
@@ -115,21 +128,31 @@ gerion-cli/
 
 ## Command Pattern
 
-All scan commands (`secrets_scan`, `sca_scan`, `iac_scan`, `sast_scan`) follow the same flow:
+All scan commands are thin wrappers that call `commands/base.py:run_scan()`:
 
-```
-1. set_log_level(log_level)
-2. api_key_string = SecretString.from_typer_option(api_key)
-3. metadata = get_metadata(code_path)
-4. metadata['scan_type'] = '<TYPE>'
-5. tool_output = run_<tool>_tool(code_path)
-6. results = {'metadata': metadata, 'findings': parse_<tool>_tool_output(tool_output, metadata)}
-7. panel(summary)
-8. if output_file: save_to_file(results, output_file, format)
-   else: send_to_api(results, ...) or findings_table(results['findings'], '<TYPE>')
+```python
+# Each command file (e.g. secrets_scan.py) only defines Typer options and calls:
+run_scan(
+    scan_type="Secrets",
+    tool_name="Gitleaks",
+    tool_runner=run_secrets_tool,
+    tool_parser=parse_secrets_tool_output,
+    # ...standard Typer options forwarded...
+)
 ```
 
-The `report` command is different: it authenticates, fetches findings from the API, and renders them.
+`run_scan()` handles the full orchestration flow:
+1. `set_log_level()` + `SecretString.from_typer_option()`
+2. `get_metadata()` + `metadata['scan_type'] = scan_type`
+3. `tool_runner()` with `time.time()` duration tracking → `metadata['scan_duration']`
+4. `tool_parser()` → `results = {'metadata': metadata, 'findings': findings}`
+5. `panel()` summary (repo, branch, commit, findings count, duration)
+6. Output routing: `save_to_file()` | `send_to_api()` | `findings_table()`
+
+The `scan-all` command runs all 4 scans sequentially through the same `run_scan()`.
+
+The `report` command is different: it authenticates, fetches findings from the API, and renders them
+using its own `ReportFormat` enum (text, json, markdown, pdf).
 
 ## Data Models
 
@@ -182,6 +205,7 @@ All findings share this template from `parser.py:generate_finding_template()`:
 | `commit_hash` | str | GERION_COMMIT_HASH > CI/CD > git HEAD |
 | `commit_author` | str | CI/CD > git commit author |
 | `scan_type` | str | Set by command handler |
+| `scan_duration` | float | Seconds elapsed during tool execution (set by `base.py`) |
 
 ## Authentication Flow
 
@@ -199,12 +223,13 @@ Multi-stage build:
 3. Runs as non-root `gerion` user (UID 1000)
 4. Volumes: `/code` (scan target), `/output` (results)
 
-## Known Issues (updated 2026-02-13)
+## Known Limitations (updated 2026-02-14)
 
-1. **No Pydantic models**: Despite Pydantic being a dependency, findings use raw dicts with no validation
-2. **No tests**: Zero test files exist
-3. **Massive command duplication**: All 4 scan commands are near-identical boilerplate
-4. **Inconsistent error returns**: `secrets.py` returns `None` on error, `sca.py`/`iac.py` return `[]`
+1. **Raw dict models**: Findings use raw dicts (no Pydantic in CLI). Evaluated in #9 —
+   validation lives in the API Gateway (`InputFinding`), duplicating models here
+   would create a sync burden with no real benefit.
+2. **Inconsistent error returns**: `secrets.py` returns `None` on general errors,
+   `sca.py`/`iac.py`/`sast.py` return `[]`. The `base.py` handles both cases.
 
 ## Key Constraints
 - **Python 3.12+**: Required minimum version

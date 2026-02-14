@@ -57,15 +57,18 @@ gerion-cli/
 │   │   ├── auth.py            # M2M API key authentication
 │   │   └── client.py          # HTTP client for API Gateway
 │   ├── commands/              # CLI command handlers
-│   │   ├── secrets_scan.py   # Secrets scanning command
-│   │   ├── sca_scan.py       # SCA scanning command
-│   │   ├── iac_scan.py       # IaC scanning command
-│   │   ├── sast_scan.py      # SAST scanning command
+│   │   ├── base.py           # Shared scan orchestration (run_scan)
+│   │   ├── secrets_scan.py   # Secrets scanning command (thin wrapper)
+│   │   ├── sca_scan.py       # SCA scanning command (thin wrapper)
+│   │   ├── iac_scan.py       # IaC scanning command (thin wrapper)
+│   │   ├── sast_scan.py      # SAST scanning command (thin wrapper)
+│   │   ├── scan_all.py       # Runs all 4 scans sequentially
 │   │   └── report.py         # Report generation command
 │   ├── core/                  # Core functionality
-│   │   ├── logging.py        # Logging configuration (Rich-based)
-│   │   ├── metadata.py       # Git metadata extraction
-│   │   └── types.py          # Custom types (SecretString)
+│   │   ├── config.py         # __version__, CLIENT_ID
+│   │   ├── logging.py        # GerionLogger (Rich-based), LogLevel enum
+│   │   ├── metadata.py       # Git metadata extraction + CI/CD detection
+│   │   └── types.py          # SecretString wrapper, OutputFormat enum
 │   ├── output/               # Output formatting
 │   │   ├── formats.py        # File output (JSON, Markdown, SARIF)
 │   │   └── tables.py         # Console table display
@@ -77,11 +80,16 @@ gerion-cli/
 │   │   └── parser.py         # Tool output parsing
 │   ├── utils/                # Utility functions
 │   └── main.py               # CLI application entry point
+├── tests/                    # Unit tests + fixtures
 ├── Dockerfile                # Multi-stage Docker build
 ├── pyproject.toml           # Poetry configuration
 ├── requirements.txt         # Python dependencies
 └── spec/
-    └── plan.md              # This document
+    ├── plan.md              # This document
+    ├── project_context.md   # LLM project context
+    ├── agent_rules.md       # LLM agent rules
+    ├── backlog.md           # Development backlog (all tiers complete)
+    └── tool_output_audit.md # #9 audit results
 ```
 
 ## 🔐 Authentication System
@@ -144,6 +152,14 @@ gerion-cli iac-scan [CODE_PATH] [OPTIONS]
 - **Tool**: KICS
 - **Output**: List of IaC misconfigurations with severity and remediation
 
+### Scan All
+```bash
+gerion-cli scan-all [CODE_PATH] [OPTIONS]
+```
+- **Purpose**: Run all 4 scan types (Secrets, SCA, IaC, SAST) sequentially
+- **Tools**: Gitleaks, OSV-Scanner, KICS, Opengrep
+- **Output**: Each scan sends results independently to API or output file
+
 ### Common Options
 - `--api-url TEXT`: API Gateway URL (overrides `GERION_API_URL`)
 - `--api-key TEXT`: M2M API key (overrides `GERION_API_KEY`, hidden input)
@@ -165,7 +181,7 @@ gerion-cli iac-scan [CODE_PATH] [OPTIONS]
     'mitigation': str,              # Remediation guidance
     'severity': str,                # Critical, High, Medium, Low, Info
     'security_scope': str,          # Code, IaC
-    'scan_type': str,               # Secrets, SCA, IaC
+    'scan_type': str,               # Secrets, SCA, IaC, SAST
     'repository_name': str,         # Git repository name
     'branch_name': str,             # Git branch name
     'build_id': str,                # CI/CD build identifier
@@ -202,7 +218,8 @@ gerion-cli iac-scan [CODE_PATH] [OPTIONS]
     'code_path': str,               # Code path scanned
     'commit_hash': str,             # Git commit SHA
     'commit_author': str,           # Git commit author
-    'scan_type': str                # Secrets, SCA, IaC
+    'scan_type': str,               # Secrets, SCA, IaC, SAST
+    'scan_duration': float          # Seconds elapsed during tool execution
 }
 ```
 
@@ -299,36 +316,38 @@ docker run --rm -v "$PWD:/code" \
 - **Output Sanitization**: Markdown output sanitizes control characters
 - **Error Handling**: Limited error details to prevent information leakage
 
-## 🧪 Testing Strategy
+## 🧪 Testing
 
-### Test Categories
-1. **Unit Tests**: Tool output parsing, metadata extraction
-2. **Integration Tests**: API authentication and submission
-3. **End-to-End Tests**: Full scan workflow with mock API
-4. **Docker Tests**: Container build and execution
+### Current Coverage
+- `test_parser.py` — All 4 parsers with real fixture data (gitleaks, osv, opengrep, kics)
+- `test_metadata.py` — Git metadata + GitHub Actions env vars + manual overrides
+- `test_finding.py` — `generate_finding_template()`, `generate_unique_id()`, `redact_text()`
+- `test_auth.py` — M2M auth success, 401, network error, invalid JSON
+- `test_output.py` — JSON, Markdown, SARIF serialization via `save_to_file()`
 
-### Test Data Requirements
-- **Mock Tool Output**: Sample Gitleaks, OSV-Scanner, KICS, and Opengrep JSON outputs
-- **Mock API Responses**: Authentication and findings submission responses
-- **Test Repositories**: Sample codebases with known vulnerabilities
+### Test Infrastructure
+- **Fixtures**: `tests/fixtures/` with real tool JSON outputs (trimmed for size)
+- **Shared fixtures**: `conftest.py` with `mock_metadata`, `load_fixture`, `fixtures_dir`
+- **Mocking**: `unittest.mock.patch` for `subprocess.run`, `httpx.post`, `git.Repo`
 
 ## 📊 Code Organization
 
 ### Command Pattern
-Each scan type (secrets, SCA, IaC) follows the same pattern:
-1. **Metadata Collection**: Extract Git repository information
-2. **Tool Execution**: Run external security tool
-3. **Output Parsing**: Parse tool JSON output to findings
-4. **Result Processing**: Format findings and metadata
-5. **Output**: Send to API or save to file
+All scan commands are thin wrappers that call `commands/base.py:run_scan()`:
+1. **Setup**: Log level, API key conversion, client ID defaulting
+2. **Metadata Collection**: Extract Git repository information
+3. **Tool Execution**: Run external security tool with duration tracking
+4. **Output Parsing**: Parse tool JSON output to findings
+5. **Summary**: Display panel with repo, branch, findings count, duration
+6. **Output**: Send to API, save to file, or display in console
 
 ### Error Handling
-- **Tool Failures**: Graceful handling of tool execution errors
+- **Tool Failures**: Graceful handling via `try/except` in `base.py`; `typer.Exit(1)` on `None` returns
 - **API Failures**: Fallback to console output if API submission fails
 - **Validation Errors**: Clear error messages for invalid inputs
 
 ### Logging Strategy
-- **Structured Logging**: Rich-based logging with color coding
+- **Structured Logging**: Rich-based logging with color coding (all layers including tool runners)
 - **Log Levels**: DEBUG, INFO, WARNING, ERROR, CRITICAL
 - **Debug Mode**: Detailed logging for troubleshooting (tool commands, API requests)
 
@@ -397,10 +416,14 @@ gerion-cli sca-scan . \
 
 ### Multi-Scan Workflow
 ```bash
-# Run all scan types
+# Run all scan types at once
+gerion-cli scan-all . --output-file results.json
+
+# Or individually
 gerion-cli secrets-scan . --output-file secrets.json
 gerion-cli sca-scan . --output-file sca.json
 gerion-cli iac-scan . --output-file iac.json
+gerion-cli sast-scan . --output-file sast.json
 ```
 
 ## 📝 Implementation Guidelines for AI Agents
