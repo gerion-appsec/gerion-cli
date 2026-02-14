@@ -4,15 +4,14 @@ IaC (Infrastructure as Code) scan tool integration.
 import subprocess
 import json
 import os
-
 import shutil
-
 import tempfile
+from gerion_cli.core.logging import error, warning
 
 def run_iac_tool(code_path, timeout=180, queries_path=None):
     kics_path = shutil.which("kics")
     if not kics_path:
-        print("KICS tool not found in PATH.")
+        error("KICS tool not found in PATH.")
         return []
 
     # Create a temporary file for the report
@@ -82,10 +81,10 @@ def run_iac_tool(code_path, timeout=180, queries_path=None):
             return data.get('queries', [])
             
     except subprocess.TimeoutExpired:
-        print(f"Error: IaC scan timed out after {timeout} seconds.")
+        error(f"IaC scan timed out after {timeout} seconds.")
         return []
     except Exception as e:
-        print(f"An error occurred while running IaC scan: {e}")
+        error(f"An error occurred while running IaC scan: {e}")
         return []
     finally:
         if os.path.exists(report_path):

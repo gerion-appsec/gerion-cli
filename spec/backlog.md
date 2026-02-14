@@ -54,72 +54,7 @@ Next priority: T3 architecture and quality improvements.
 | **T1** | Bugs & Stability | ~~#1, #2, #3~~ DONE |
 | **T2** | Tool Migration — Opengrep + OSV-Scanner + KICS | ~~#4, #5, #6, #7~~ DONE |
 | **T3** | Architecture & Quality — DRY, models, tests | ~~#8, #9, #10, #11~~ DONE |
-| **T4** | Features — New capabilities | #12, #13, #14 |
-
----
-
-## Tier 4 — Features
-
-### #12 Add Scan Duration Tracking
-
-**Priority**: LOW
-**Effort**: Low
-**Impact**: Frontend needs this field to display scan duration
-
-#### Problem
-From TODO file: "En el front, en el apartado scans hay un campo duración del scan
-que no se puede mostrar porque no lo capturamos con la cli."
-
-#### Solution
-1. Record `start_time` before tool execution
-2. Calculate `duration_seconds` after tool completes
-3. Add `scan_duration` field to metadata
-4. Include in API submission
-
-#### Files to Modify
-- `gerion_cli/commands/*.py` — Add timing around tool execution
-- `gerion_cli/core/metadata.py` — Or add to the metadata dict
-
----
-
-### #13 Add `scan-all` Command
-
-**Priority**: LOW
-**Effort**: Low (after #8)
-**Impact**: Single command to run all scan types
-
-#### Problem
-Users must run 4 separate commands for a full scan. A unified command
-would improve CI/CD integration and UX.
-
-#### Solution
-Add a `scan-all` command that runs secrets, SCA, IaC, and SAST scans
-sequentially and aggregates results.
-
-#### Files to Modify
-- New: `gerion_cli/commands/scan_all.py`
-- `gerion_cli/main.py` — Register new command
-
----
-
-### #14 Migrate Tool Runners to Use Logging
-
-**Priority**: LOW
-**Effort**: Low
-**Impact**: Consistent log output from tool layer
-
-#### Problem
-Tool runners (`tools/*.py`) use `print()` for error messages instead of
-the Rich logging functions (`error()`, `warning()`) used everywhere else.
-
-#### Solution
-Replace `print()` calls with proper logging calls in all tool runners.
-
-#### Files to Modify
-- `gerion_cli/tools/secrets.py`
-- `gerion_cli/tools/sca.py`
-- `gerion_cli/tools/iac.py`
-- `gerion_cli/tools/sast.py`
+| **T4** | Features — New capabilities | ~~#12, #13, #14~~ DONE |
 
 ---
 
@@ -161,3 +96,6 @@ These are NOT backlog items for the CLI:
 | #9 | Audit Tool Outputs & Finding Model | Research only. No normalizable fields found across all scanners worth adding. See `spec/tool_output_audit.md` |
 | #10 | Unify Output Format System | Separate typed enums per command (`OutputFormat` for scans, `ReportFormat` for report). Single enum rejected — format sets are inherently different |
 | #11 | Add Unit Tests | 5 test files + 4 fixtures. Covers parsers, metadata, auth, finding template, output formats |
+| #12 | Add Scan Duration Tracking | `scan_duration` in metadata via `time.time()` in `base.py`. Included in panel summary and API payload |
+| #13 | Add `scan-all` Command | `commands/scan_all.py` runs all 4 scans sequentially via `run_scan()` |
+| #14 | Migrate Tool Runners to Logging | All `print()` replaced with `error()`/`warning()` in 4 tool runners |

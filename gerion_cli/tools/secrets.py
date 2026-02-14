@@ -4,14 +4,13 @@ Secrets detection tool integration.
 import subprocess
 import json
 import os
-
 import shutil
-
 import tempfile
+from gerion_cli.core.logging import error, warning
 
 def run_secrets_tool(code_path, timeout=180):
     if not shutil.which("gitleaks"):
-        print("Gitleaks tool not found in PATH.")
+        error("Gitleaks tool not found in PATH.")
         return []
 
     # Create a temporary file for the report
@@ -25,10 +24,10 @@ def run_secrets_tool(code_path, timeout=180):
             data = json.load(file)
             return data
     except subprocess.TimeoutExpired:
-        print(f"Error: Secrets scan timed out after {timeout} seconds.")
+        error(f"Secrets scan timed out after {timeout} seconds.")
         return []
     except Exception as e:
-        print(f"An error occurred while reading the JSON file: {e}")
+        error(f"An error occurred while reading the JSON file: {e}")
         return None
     finally:
         if os.path.exists(report_path):

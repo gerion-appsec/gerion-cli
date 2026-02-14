@@ -2,7 +2,9 @@ import subprocess
 import json
 import os
 import shutil
+import tempfile
 from typing import List, Dict, Any, Optional
+from gerion_cli.core.logging import error, warning
 
 # Premium Feature Hooks
 try:
@@ -10,8 +12,6 @@ try:
     HAS_PRO = True
 except ImportError:
     HAS_PRO = False
-
-import tempfile
 
 def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
     """
@@ -24,7 +24,7 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
     results = []
 
     if not shutil.which("opengrep"):
-        print("Opengrep tool not found in PATH.")
+        error("Opengrep tool not found in PATH.")
         return []
 
     # Create a temporary file for the report
@@ -55,10 +55,10 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
             if data:
                 results = data.get('results', [])
     except subprocess.TimeoutExpired:
-        print(f"Error: SAST scan timed out after {timeout} seconds.")
+        error(f"SAST scan timed out after {timeout} seconds.")
         return []
     except Exception as e:
-        print(f"An error occurred while running SAST scan: {e}")
+        error(f"An error occurred while running SAST scan: {e}")
     finally:
         if os.path.exists(report_path):
             try: os.remove(report_path)
@@ -70,6 +70,6 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
             engine = StructuralEngine()
             engine.analyze_reachability(results, code_path)
         except Exception as e:
-            print(f"Structural Engine failed: {e}")
+            warning(f"Structural Engine failed: {e}")
             
     return results

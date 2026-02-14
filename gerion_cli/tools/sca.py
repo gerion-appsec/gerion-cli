@@ -6,10 +6,11 @@ import json
 import os
 import shutil
 import tempfile
+from gerion_cli.core.logging import error, warning
 
 def run_sca_tool(code_path, timeout=180):
     if not shutil.which("osv-scanner"):
-        print("OSV-Scanner tool not found in PATH.")
+        error("OSV-Scanner tool not found in PATH.")
         return []
 
     # Create a temporary file for the report
@@ -53,11 +54,11 @@ def run_sca_tool(code_path, timeout=180):
             return results if results is not None else []
 
     except subprocess.TimeoutExpired:
-        print(f"Error: SCA scan timed out after {timeout} seconds.")
+        error(f"SCA scan timed out after {timeout} seconds.")
         return []
-            
+
     except Exception as e:
-        print(f"An error occurred while running SCA scan: {e}")
+        error(f"An error occurred while running SCA scan: {e}")
         return []
     finally:
         if os.path.exists(report_path):

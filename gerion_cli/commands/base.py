@@ -1,3 +1,4 @@
+import time
 import typer
 from typing import Callable, Any, Dict, List, Optional
 from gerion_cli.core import (
@@ -47,19 +48,23 @@ def run_scan(
     debug("Metadata collected successfully")
     
     info(f"Running {tool_name} scan...")
-    
+
     # Run the tool with provided arguments
+    start_time = time.time()
     try:
         tool_output = tool_runner(code_path, timeout=timeout, **runner_kwargs)
     except Exception as e:
         error(f"Error running {scan_type} tool: {e}")
         raise typer.Exit(1)
+    finally:
+        scan_duration = round(time.time() - start_time, 2)
+        metadata['scan_duration'] = scan_duration
 
     if tool_output is None:
         error(f"Failed to run {scan_type} scan (tool returned None)")
         raise typer.Exit(1)
-        
-    info(f"Found {len(tool_output)} potential issues")
+
+    info(f"Found {len(tool_output)} potential issues in {scan_duration}s")
     
     # Parse findings
     findings = tool_parser(tool_output, metadata)
@@ -70,7 +75,8 @@ def run_scan(
         f"Repository: {metadata['repository_name']}\n"
         f"Branch: {metadata['branch_name']}\n"
         f"Commit: {metadata['commit_hash'][:8] if metadata['commit_hash'] else 'N/A'}\n"
-        f"Findings: {len(results['findings'])}",
+        f"Findings: {len(results['findings'])}\n"
+        f"Duration: {metadata['scan_duration']}s",
         "blue"
     )
     
