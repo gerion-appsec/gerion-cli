@@ -54,6 +54,75 @@ exist, and feature additions (scan-all, duration tracking) are in place.
 | **T2** | Tool Migration — Opengrep + OSV-Scanner + KICS | ~~#4, #5, #6, #7~~ DONE |
 | **T3** | Architecture & Quality — DRY, models, tests | ~~#8, #9, #10, #11~~ DONE |
 | **T4** | Features — New capabilities | ~~#12, #13, #14~~ DONE |
+| **T5** | UX & Polish | #15 |
+
+---
+
+## Tier 5 — UX & Polish
+
+### #15 Fix Output Routing & CLI Consistency
+
+**Priority**: MEDIUM
+**Effort**: Medium
+**Impact**: Predictable, intuitive CLI behavior across all commands
+
+#### Problem
+The output routing logic in `base.py` has unclear priority rules, and several
+inconsistencies exist between scan commands, `scan-all`, and `report`.
+
+#### Issues
+
+**Output routing in `base.py` (core problem):**
+1. `--output-file` does not silence console — still shows panel, info messages,
+   and the "No API credentials" warning + findings table.
+2. `--format` without `--output-file` does nothing useful — should print to
+   stdout in the chosen format (like `report` does with `--format json`).
+3. "No API credentials" warning fires even when `--output-file` is set, which
+   is misleading since the user explicitly chose file output.
+4. No clear output priority. Should be:
+   `--output-file` > `--format` (stdout) > API (if creds exist) > table (fallback).
+
+**`scan-all` workarounds:**
+5. Passes `api_url=None` to suppress API when `--output-file` is set, which
+   triggers the "No API credentials" warning 4 times.
+
+**Inconsistencies with `report`:**
+6. Flag naming: scan commands use `--output-file / -o`, report uses `--output / -o`.
+7. `report` uses `rprint()`/`print()` directly instead of Rich logging functions.
+8. `report` hardcodes `http://localhost:8000` as default API URL (line 43).
+   Scan commands use `None` and let the user provide it.
+
+**Global options:**
+9. `--log-level` is per-command only. Could be a global option on `main.py` callback.
+10. `main.py` version callback uses `print()` instead of Rich.
+
+#### Solution
+
+Rewrite `run_scan()` output routing with clear priority:
+```
+if output_file:
+    save_to_file(results, output_file, format)
+elif format != default:
+    print_formatted(results, format)  # stdout
+elif api_url and api_key:
+    send_to_api(results, ...)
+else:
+    findings_table(results)           # fallback
+```
+
+Then:
+- `scan_all` passes `output_file=None` and handles aggregation itself (already done),
+  but no longer needs the `api_url=None` hack since `base.py` won't warn.
+- Unify `--output-file`/`--output` flag naming across all commands.
+- Migrate `report` to use Rich logging functions.
+- Remove hardcoded localhost default in `report`.
+- Optionally promote `--log-level` to global callback.
+
+#### Files to Modify
+- `gerion_cli/commands/base.py` — Rewrite output routing
+- `gerion_cli/commands/scan_all.py` — Remove api_url=None hack
+- `gerion_cli/commands/report.py` — Unify flag names, use Rich logging, remove localhost default
+- `gerion_cli/main.py` — Optional: global `--log-level`, Rich version output
 
 ---
 
