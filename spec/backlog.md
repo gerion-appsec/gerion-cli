@@ -53,42 +53,8 @@ Next priority: T3 architecture and quality improvements.
 |------|------|-------|
 | **T1** | Bugs & Stability | ~~#1, #2, #3~~ DONE |
 | **T2** | Tool Migration — Opengrep + OSV-Scanner + KICS | ~~#4, #5, #6, #7~~ DONE |
-| **T3** | Architecture & Quality — DRY, models, tests | ~~#8, #9, #10~~, #11 |
+| **T3** | Architecture & Quality — DRY, models, tests | ~~#8, #9, #10, #11~~ DONE |
 | **T4** | Features — New capabilities | #12, #13, #14 |
-
----
-
-## Tier 3 — Architecture & Quality
-
----
-
----
-
----
-
-### #11 Add Unit Tests
-
-**Priority**: HIGH
-**Effort**: High
-**Impact**: Regression safety, confidence for refactoring
-
-#### Problem
-Zero test coverage. The `tests/` directory only contains an empty `__init__.py`.
-
-#### Solution
-Prioritized test plan:
-1. **Parsers** (highest value): Test all `parse_*_tool_output()` with fixture data
-2. **Metadata**: Test `get_metadata()` with mocked git repos and env vars
-3. **Finding template**: Test `generate_finding_template()`, `generate_unique_id()`
-4. **API auth**: Test `authenticate_with_api()` with mocked httpx responses
-5. **Output formats**: Test JSON, Markdown, SARIF serialization
-
-#### Files to Create
-- `tests/fixtures/` — Sample tool JSON outputs
-- `tests/test_parser.py`
-- `tests/test_metadata.py`
-- `tests/test_auth.py`
-- `tests/test_output.py`
 
 ---
 
@@ -194,3 +160,4 @@ These are NOT backlog items for the CLI:
 | #8 | Extract Base Scan Command | `commands/base.py` with `run_scan()`, 4 commands reduced to thin wrappers |
 | #9 | Audit Tool Outputs & Finding Model | Research only. No normalizable fields found across all scanners worth adding. See `spec/tool_output_audit.md` |
 | #10 | Unify Output Format System | Separate typed enums per command (`OutputFormat` for scans, `ReportFormat` for report). Single enum rejected — format sets are inherently different |
+| #11 | Add Unit Tests | 5 test files + 4 fixtures. Covers parsers, metadata, auth, finding template, output formats |
