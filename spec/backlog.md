@@ -53,7 +53,7 @@ Next priority: T3 architecture and quality improvements.
 |------|------|-------|
 | **T1** | Bugs & Stability | ~~#1, #2, #3~~ DONE |
 | **T2** | Tool Migration — Opengrep + OSV-Scanner + KICS | ~~#4, #5, #6, #7~~ DONE |
-| **T3** | Architecture & Quality — DRY, models, tests | ~~#8, #9~~, #10, #11 |
+| **T3** | Architecture & Quality — DRY, models, tests | ~~#8, #9, #10~~, #11 |
 | **T4** | Features — New capabilities | #12, #13, #14 |
 
 ---
@@ -63,26 +63,6 @@ Next priority: T3 architecture and quality improvements.
 ---
 
 ---
-
-### #10 Unify Output Format System
-
-**Priority**: MEDIUM
-**Effort**: Low
-**Impact**: Consistent format handling across scan commands and report command
-
-#### Problem
-Scan commands use `OutputFormat` enum (`json`/`markdown`/`sarif`).
-Report command uses raw string (`text`/`json`/`md`/`pdf`).
-These need to be unified.
-
-#### Solution
-1. Extend `OutputFormat` enum to include `text` and `pdf`
-2. Migrate report command to use the enum
-3. Add `text` and `pdf` output support to scan commands (optional)
-
-#### Files to Modify
-- `gerion_cli/core/logging.py` — Extend `OutputFormat` enum
-- `gerion_cli/commands/report.py` — Use `OutputFormat` enum
 
 ---
 
@@ -213,3 +193,4 @@ These are NOT backlog items for the CLI:
 | #7 | Rebuild Dockerfile for new tool stack | Multi-stage: tool-builder + kics-builder (Go + UPX) + cli-builder + debian:bookworm-slim final |
 | #8 | Extract Base Scan Command | `commands/base.py` with `run_scan()`, 4 commands reduced to thin wrappers |
 | #9 | Audit Tool Outputs & Finding Model | Research only. No normalizable fields found across all scanners worth adding. See `spec/tool_output_audit.md` |
+| #10 | Unify Output Format System | Separate typed enums per command (`OutputFormat` for scans, `ReportFormat` for report). Single enum rejected — format sets are inherently different |
