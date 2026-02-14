@@ -66,12 +66,12 @@ gerion-cli/
 │   │   └── report.py         # Report generation command
 │   ├── core/                  # Core functionality
 │   │   ├── config.py         # __version__, CLIENT_ID
-│   │   ├── logging.py        # GerionLogger (Rich-based), LogLevel enum
+│   │   ├── logging.py        # GerionLogger (Rich-based, stderr), LogLevel enum
 │   │   ├── metadata.py       # Git metadata extraction + CI/CD detection
-│   │   └── types.py          # SecretString wrapper, OutputFormat enum
+│   │   └── types.py          # SecretString wrapper, OutputFormat enum (json, markdown, sarif, table)
 │   ├── output/               # Output formatting
-│   │   ├── formats.py        # File output (JSON, Markdown, SARIF)
-│   │   └── tables.py         # Console table display
+│   │   ├── formats.py        # File/stdout output (JSON, Markdown, SARIF) + content generators
+│   │   └── tables.py         # Console table display (own stdout Console)
 │   ├── tools/                # Security tool integration
 │   │   ├── secrets.py        # Gitleaks integration
 │   │   ├── sca.py            # OSV-Scanner SCA integration
@@ -88,7 +88,7 @@ gerion-cli/
     ├── plan.md              # This document
     ├── project_context.md   # LLM project context
     ├── agent_rules.md       # LLM agent rules
-    ├── backlog.md           # Development backlog (all tiers complete)
+    ├── backlog.md           # Development backlog (all tiers T1-T5 complete)
     └── tool_output_audit.md # #9 audit results
 ```
 
@@ -158,14 +158,14 @@ gerion-cli scan-all [CODE_PATH] [OPTIONS]
 ```
 - **Purpose**: Run all 4 scan types (Secrets, SCA, IaC, SAST) sequentially
 - **Tools**: Gitleaks, OSV-Scanner, KICS, Opengrep
-- **Output**: Each scan sends results independently to API or output file
+- **Output**: When `--output-file` or `--format` is set, individual scans are suppressed and aggregated output is handled at the end. Otherwise, each scan outputs independently (API or table)
 
 ### Common Options
 - `--api-url TEXT`: API Gateway URL (overrides `GERION_API_URL`)
 - `--api-key TEXT`: M2M API key (overrides `GERION_API_KEY`, hidden input)
 - `--client-id TEXT`: Client ID (overrides `GERION_CLIENT_ID`)
-- `--output-file TEXT`: Save results to file (disables API sending)
-- `--format [json|markdown|sarif]`: Output format for file saving
+- `--output-file TEXT`: Save results to file (suppresses API and console output)
+- `--format [json|markdown|sarif|table]`: Output format for file saving or stdout (default: None — falls through to API or table)
 - `--timeout INT`: Tool execution timeout in seconds (default: 180)
 - `--log-level [debug|info|warning|error|critical]`: Logging verbosity
 - `--queries-path TEXT`: (IaC only) Path to KICS queries directory
@@ -256,9 +256,10 @@ gerion-cli scan-all [CODE_PATH] [OPTIONS]
 ## 📊 Output Formats
 
 ### Console Output
-- **Rich Tables**: Color-coded tables sorted by severity
-- **Panels**: Summary panels with scan metadata
-- **Logging**: Structured logging with Rich formatting (debug, info, warning, error, success)
+- **Rich Tables**: Color-coded tables sorted by severity (stdout)
+- **Panels**: Summary panels with scan metadata (stderr)
+- **Logging**: Structured logging with Rich formatting to stderr (debug, info, warning, error, success)
+- **Stdout/stderr separation**: Logging and panels go to stderr, formatted output and tables go to stdout — enables clean piping (`gerion-cli sast-scan --format json | jq`)
 
 ### JSON Output
 - **Format**: Standard JSON with findings array and metadata
@@ -338,8 +339,12 @@ All scan commands are thin wrappers that call `commands/base.py:run_scan()`:
 2. **Metadata Collection**: Extract Git repository information
 3. **Tool Execution**: Run external security tool with duration tracking
 4. **Output Parsing**: Parse tool JSON output to findings
-5. **Summary**: Display panel with repo, branch, findings count, duration
-6. **Output**: Send to API, save to file, or display in console
+5. **Summary**: Display panel with repo, branch, findings count, duration (stderr)
+6. **Output routing** (mutually exclusive priority):
+   - `--output-file` → save to file (format inferred from extension if not explicit)
+   - `--format` → print to stdout in chosen format
+   - API creds → send to API (fallback to table on failure)
+   - fallback → display findings table in console
 
 ### Error Handling
 - **Tool Failures**: Graceful handling via `try/except` in `base.py`; `typer.Exit(1)` on `None` returns

@@ -83,17 +83,17 @@ gerion-cli/
 │   │   ├── iac_scan.py             # IaC scan command (KICS) — thin wrapper
 │   │   ├── sast_scan.py            # SAST scan command (Opengrep) — thin wrapper
 │   │   ├── scan_all.py             # Runs all 4 scans sequentially
-│   │   └── report.py               # Report generation command (fetches from API)
+│   │   └── report.py               # Report generation command (fetches from API, --output-file, Rich logging)
 │   ├── core/
 │   │   ├── __init__.py             # Exports: SecretString, LogLevel, OutputFormat, logging funcs, get_metadata, CLIENT_ID
 │   │   ├── config.py               # __version__, CLIENT_ID
-│   │   ├── logging.py              # GerionLogger (Rich-based), LogLevel enum
+│   │   ├── logging.py              # GerionLogger (Rich-based, stderr), LogLevel enum
 │   │   ├── metadata.py             # Git metadata extraction + CI/CD env var detection
-│   │   └── types.py                # SecretString wrapper, OutputFormat enum
+│   │   └── types.py                # SecretString wrapper, OutputFormat enum (json, markdown, sarif, table)
 │   ├── output/
-│   │   ├── __init__.py             # Exports: save_to_file, findings_table
-│   │   ├── formats.py              # JSON, Markdown, SARIF file output
-│   │   └── tables.py               # Rich console table display
+│   │   ├── __init__.py             # Exports: save_to_file, print_formatted, findings_table
+│   │   ├── formats.py              # JSON, Markdown, SARIF file/stdout output + content generators
+│   │   └── tables.py               # Rich console table display (own stdout Console)
 │   ├── tools/
 │   │   ├── __init__.py             # Exports: run_* and parse_* functions for all tools
 │   │   ├── secrets.py              # Gitleaks runner
@@ -147,12 +147,19 @@ run_scan(
 3. `tool_runner()` with `time.time()` duration tracking → `metadata['scan_duration']`
 4. `tool_parser()` → `results = {'metadata': metadata, 'findings': findings}`
 5. `panel()` summary (repo, branch, commit, findings count, duration)
-6. Output routing: `save_to_file()` | `send_to_api()` | `findings_table()`
+6. Output routing (mutually exclusive priority chain):
+   `--output-file` → `save_to_file()` |
+   `--format` → `print_formatted()` (stdout) |
+   API creds → `send_to_api()` |
+   fallback → `findings_table()` (stdout)
 
 The `scan-all` command runs all 4 scans sequentially through the same `run_scan()`.
+When `--output-file` or `--format` is set, individual scans are suppressed (no file/format/API)
+and `scan_all` handles aggregated output at the end using the same priority chain.
 
 The `report` command is different: it authenticates, fetches findings from the API, and renders them
-using its own `ReportFormat` enum (text, json, markdown, pdf).
+using its own `ReportFormat` enum (text, json, markdown, pdf). Uses `--output-file` (unified with
+scan commands) and requires `--api-url` (no hardcoded default).
 
 ## Data Models
 
@@ -223,13 +230,15 @@ Multi-stage build:
 3. Runs as non-root `gerion` user (UID 1000)
 4. Volumes: `/code` (scan target), `/output` (results)
 
-## Known Limitations (updated 2026-02-14)
+## Known Limitations (updated 2026-02-15)
 
 1. **Raw dict models**: Findings use raw dicts (no Pydantic in CLI). Evaluated in #9 —
    validation lives in the API Gateway (`InputFinding`), duplicating models here
    would create a sync burden with no real benefit.
 2. **Inconsistent error returns**: `secrets.py` returns `None` on general errors,
    `sca.py`/`iac.py`/`sast.py` return `[]`. The `base.py` handles both cases.
+3. **`--log-level` per-command only**: Not promoted to global callback. Minor UX
+   inconvenience but low priority.
 
 ## Key Constraints
 - **Python 3.12+**: Required minimum version
