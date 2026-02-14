@@ -1,22 +1,7 @@
 import typer
-from gerion_cli.core import (
-    get_metadata, 
-    LogLevel, 
-    OutputFormat, 
-    set_log_level, 
-    info, 
-    warning, 
-    error, 
-    success, 
-    panel, 
-    debug, 
-    SecretString, 
-    CLIENT_ID
-)
+from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID
 from gerion_cli.tools import run_sast_tool, parse_sast_tool_output
-from gerion_cli.api import send_to_api
-from gerion_cli.output import save_to_file, findings_table
-
+from gerion_cli.commands.base import run_scan
 
 
 def sast_scan(
@@ -36,49 +21,16 @@ def sast_scan(
     potential vulnerabilities in the code. If Premium is active, it also performs 
     Deep Reachability Analysis using Atom.
     """
-    set_log_level(log_level)
-    api_key_string = SecretString.from_typer_option(api_key)
-    # Use default client_id if not provided
-    effective_client_id = client_id or CLIENT_ID
-    info("Starting SAST scan...")
-    debug(f"Scanning code path: {code_path}")
-    metadata = get_metadata(code_path=code_path)
-    metadata['scan_type'] = 'SAST'
-    debug("Metadata collected successfully")
-    info("Running Opengrep scan...")
-    
-    # Run Tool
-    sast_results = run_sast_tool(code_path, timeout=timeout)
-    
-    if sast_results is None:
-        error("Failed to run SAST scan")
-        raise typer.Exit(1)
-        
-    info(f"Found {len(sast_results)} potential vulnerabilities")
-    
-    # Parse and Enrich
-    parsed_findings = parse_sast_tool_output(sast_results, metadata)
-    
-    results = {'metadata':metadata, 'findings': parsed_findings}
-    
-    panel(
-        "SAST Scan Summary",
-        f"Repository: {metadata['repository_name']}\n"
-        f"Branch: {metadata['branch_name']}\n"
-        f"Commit: {metadata['commit_hash'][:8] if metadata['commit_hash'] else 'N/A'}\n"
-        f"Findings: {len(results['findings'])}",
-        "blue"
+    run_scan(
+        scan_type="SAST",
+        tool_runner=run_sast_tool,
+        tool_parser=parse_sast_tool_output,
+        code_path=code_path,
+        api_url=api_url,
+        client_id=client_id,
+        api_key=api_key,
+        output_file=output_file,
+        format=format,
+        timeout=timeout,
+        log_level=log_level
     )
-    
-    if output_file:
-        save_to_file(results, output_file, format)
-        debug("Results saved to file. API sending disabled when output file is specified.")
-    else:
-        if not all([api_url, effective_client_id, api_key_string]):
-            warning("No API credentials provided. Results will be displayed in console only.")
-            findings_table(results['findings'], "SAST")
-        else:
-            success_result = send_to_api(results, api_url, effective_client_id, api_key_string)
-            if not success_result:
-                warning("Results will be displayed in console only.")
-                findings_table(results['findings'], "SAST")

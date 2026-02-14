@@ -1,21 +1,7 @@
 import typer
-from gerion_cli.core import (
-    get_metadata, 
-    LogLevel, 
-    OutputFormat, 
-    set_log_level, 
-    info, 
-    warning, 
-    error, 
-    success, 
-    panel, 
-    debug, 
-    SecretString, 
-    CLIENT_ID
-)
+from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID
 from gerion_cli.tools import run_secrets_tool, parse_secrets_tool_output
-from gerion_cli.api import send_to_api
-from gerion_cli.output import save_to_file, findings_table
+from gerion_cli.commands.base import run_scan
 
 def secrets_scan(
     code_path: str = typer.Argument(".", help="Path to the code directory to scan", show_default=True),
@@ -47,39 +33,16 @@ def secrets_scan(
         # Send to API Gateway
         gerion-cli secrets-scan --api-url https://api.gerion.com --api-key YOUR_KEY
     """
-    set_log_level(log_level)
-    api_key_string = SecretString.from_typer_option(api_key)
-    # Use default client_id if not provided
-    effective_client_id = client_id or CLIENT_ID
-    info("Starting secrets scan...")
-    debug(f"Scanning code path: {code_path}")
-    metadata = get_metadata(code_path=code_path)
-    metadata['scan_type'] = 'Secrets'
-    debug("Metadata collected successfully")
-    info("Running Gitleaks scan...")
-    secrets_tool_output = run_secrets_tool(code_path, timeout=timeout)
-    if secrets_tool_output is None:
-        error("Failed to run secrets scan")
-        raise typer.Exit(1)
-    info(f"Found {len(secrets_tool_output)} potential secrets")
-    results = {'metadata':metadata, 'findings': parse_secrets_tool_output(secrets_tool_output, metadata)}
-    panel(
-        "Secrets Scan Summary",
-        f"Repository: {metadata['repository_name']}\n"
-        f"Branch: {metadata['branch_name']}\n"
-        f"Commit: {metadata['commit_hash'][:8] if metadata['commit_hash'] else 'N/A'}\n"
-        f"Findings: {len(results['findings'])}",
-        "blue"
+    run_scan(
+        scan_type="Secrets",
+        tool_runner=run_secrets_tool,
+        tool_parser=parse_secrets_tool_output,
+        code_path=code_path,
+        api_url=api_url,
+        client_id=client_id,
+        api_key=api_key,
+        output_file=output_file,
+        format=format,
+        timeout=timeout,
+        log_level=log_level
     )
-    if output_file:
-        save_to_file(results, output_file, format)
-        debug("Results saved to file. API sending disabled when output file is specified.")
-    else:
-        if not all([api_url, effective_client_id, api_key_string]):
-            warning("No API credentials provided. Results will be displayed in console only.")
-            findings_table(results['findings'], "Secrets")
-        else:
-            success_result = send_to_api(results, api_url, effective_client_id, api_key_string)
-            if not success_result:
-                warning("Results will be displayed in console only.")
-                findings_table(results['findings'], "Secrets")

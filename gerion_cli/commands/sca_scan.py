@@ -1,21 +1,7 @@
 import typer
-from gerion_cli.core import (
-    get_metadata, 
-    LogLevel, 
-    OutputFormat, 
-    set_log_level, 
-    info, 
-    warning, 
-    error, 
-    success, 
-    panel, 
-    debug, 
-    SecretString, 
-    CLIENT_ID
-)
+from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID
 from gerion_cli.tools import run_sca_tool, parse_sca_tool_output
-from gerion_cli.api import send_to_api
-from gerion_cli.output import save_to_file, findings_table
+from gerion_cli.commands.base import run_scan
 
 def sca_scan(
     code_path: str = typer.Argument(".", help="Path to the code directory to scan", show_default=True),
@@ -48,39 +34,16 @@ def sca_scan(
         # Send to API Gateway
         gerion-cli sca-scan --api-url https://api.gerion.com --api-key YOUR_KEY
     """
-    set_log_level(log_level)
-    api_key_string = SecretString.from_typer_option(api_key)
-    # Use default client_id if not provided
-    effective_client_id = client_id or CLIENT_ID
-    info("Starting SCA scan...")
-    debug(f"Scanning code path: {code_path}")
-    metadata = get_metadata(code_path=code_path)
-    metadata['scan_type'] = 'SCA'
-    debug("Metadata collected successfully")
-    info("Running OSV-Scanner scan...")
-    sca_tool_output = run_sca_tool(code_path, timeout=timeout)
-    if sca_tool_output is None:
-        error("Failed to run SCA scan")
-        raise typer.Exit(1)
-    info(f"Found {len(sca_tool_output)} potential vulnerabilities")
-    results = {'metadata':metadata, 'findings': parse_sca_tool_output(sca_tool_output, metadata)}
-    panel(
-        "SCA Scan Summary",
-        f"Repository: {metadata['repository_name']}\n"
-        f"Branch: {metadata['branch_name']}\n"
-        f"Commit: {metadata['commit_hash'][:8] if metadata['commit_hash'] else 'N/A'}\n"
-        f"Findings: {len(results['findings'])}",
-        "blue"
+    run_scan(
+        scan_type="SCA",
+        tool_runner=run_sca_tool,
+        tool_parser=parse_sca_tool_output,
+        code_path=code_path,
+        api_url=api_url,
+        client_id=client_id,
+        api_key=api_key,
+        output_file=output_file,
+        format=format,
+        timeout=timeout,
+        log_level=log_level
     )
-    if output_file:
-        save_to_file(results, output_file, format)
-        debug("Results saved to file. API sending disabled when output file is specified.")
-    else:
-        if not all([api_url, effective_client_id, api_key_string]):
-            warning("No API credentials provided. Results will be displayed in console only.")
-            findings_table(results['findings'], "SCA")
-        else:
-            success_result = send_to_api(results, api_url, effective_client_id, api_key_string)
-            if not success_result:
-                warning("Results will be displayed in console only.")
-                findings_table(results['findings'], "SCA")
