@@ -2,7 +2,13 @@
 Custom types for Gerion CLI.
 """
 from typing import Optional
+from enum import Enum
 from pydantic import SecretStr
+
+class OutputFormat(str, Enum):
+    JSON = "json"
+    MARKDOWN = "markdown"
+    SARIF = "sarif"
 
 class SecretString:
     """

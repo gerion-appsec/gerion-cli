@@ -17,10 +17,6 @@ class LogLevel(str, Enum):
     ERROR = "error"
     CRITICAL = "critical"
 
-class OutputFormat(str, Enum):
-    JSON = "json"
-    MARKDOWN = "markdown"
-    SARIF = "sarif"
 
 class GerionLogger:
     def __init__(self, log_level: LogLevel = LogLevel.INFO):

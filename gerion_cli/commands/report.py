@@ -2,6 +2,7 @@ import typer
 import httpx
 import os
 from typing import Optional
+from enum import Enum
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -14,13 +15,19 @@ from gerion_cli.api.auth import authenticate_with_api
 
 console = Console()
 
+class ReportFormat(str, Enum):
+    JSON = "json"
+    MARKDOWN = "markdown"
+    TEXT = "text"
+    PDF = "pdf"
+
 def report(
     path: str = typer.Argument(".", help="Path to the code directory", show_default=True),
     repo: Optional[str] = typer.Option(None, "--repo", "-r", help="Override repository name"),
     branch: Optional[str] = typer.Option(None, "--branch", "-b", help="Override branch name"),
     scan_type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by scan type (SAST, SCA, IAC, SECRETS)"),
     severity: Optional[str] = typer.Option(None, "--severity", "-s", help="Filter by minimum severity (CRITICAL, HIGH, MEDIUM, LOW)"),
-    format: str = typer.Option("text", "--format", "-f", help="Output format (text, json, md, pdf)"),
+    format: ReportFormat = typer.Option(ReportFormat.TEXT, "--format", "-f", help="Output format (text, json, markdown, pdf)"),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path"),
     api_url: Optional[str] = typer.Option(None, "--api-url", "-u", envvar="GERION_API_URL", help="API Gateway URL"),
     client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help=f"Client ID for API authentication (default: {CLIENT_ID})"),
@@ -104,11 +111,7 @@ def report(
     ))
 
     # 4. Handle Formats
-    format = format.lower()
-    if format in ["md", "markdown"]:
-        format = "md"
-        
-    if format == "json":
+    if format == ReportFormat.JSON:
         import json
         output_data = json.dumps(findings, indent=2)
         if output:
@@ -118,10 +121,10 @@ def report(
         else:
             print(output_data)
             
-    elif format == "text":
+    elif format == ReportFormat.TEXT:
         display_text_report(findings, current_repo, current_branch, include_description, include_mitigation, active_only)
         
-    elif format == "md":
+    elif format == ReportFormat.MARKDOWN:
         md_content = generate_markdown_report(findings, current_repo, current_branch, include_description, include_mitigation, active_only)
         if output:
             with open(output, "w") as f:
@@ -130,7 +133,7 @@ def report(
         else:
             print(md_content)
             
-    elif format == "pdf":
+    elif format == ReportFormat.PDF:
         if not output:
             rprint("[red]Error: PDF format requires an output file path.[/red]")
             rprint("Please provide one using the [bold]--output / -o[/bold] flag.")
@@ -138,7 +141,7 @@ def report(
         generate_pdf_report(findings, current_repo, current_branch, output, include_description, include_mitigation, active_only)
     else:
         rprint(f"[red]Error: Unsupported format '{format}'.[/red]")
-        rprint("Supported formats are: [bold]text, json, md, markdown, pdf[/bold]")
+        rprint("Supported formats are: [bold]text, json, markdown, pdf[/bold]")
         raise typer.Abort()
 
 def display_text_report(findings, repo, branch, include_description, include_mitigation, active_only):

@@ -5,7 +5,8 @@ import json
 import re
 from datetime import datetime
 from typing import Dict, List, Any
-from gerion_cli.core.logging import OutputFormat, info
+from gerion_cli.core.logging import info
+from gerion_cli.core.types import OutputFormat
 
 def sanitize_verbose_text(text: str) -> str:
     """

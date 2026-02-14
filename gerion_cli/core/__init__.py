@@ -1,7 +1,6 @@
-from .types import SecretString
+from .types import SecretString, OutputFormat
 from .logging import (
     LogLevel, 
-    OutputFormat, 
     set_log_level, 
     debug, 
     info, 
