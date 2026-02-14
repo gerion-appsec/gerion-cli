@@ -1,0 +1,90 @@
+{
+	"kics_version": "development",
+	"files_scanned": 6,
+	"lines_scanned": 193,
+	"files_parsed": 6,
+	"lines_parsed": 185,
+	"lines_ignored": 8,
+	"files_failed_to_scan": 0,
+	"queries_total": 0,
+	"queries_failed_to_execute": 0,
+	"queries_failed_to_compute_similarity_id": 0,
+	"scan_id": "console",
+	"severity_counters": {
+		"CRITICAL": 0,
+		"HIGH": 4,
+		"INFO": 0,
+		"LOW": 0,
+		"MEDIUM": 0,
+		"TRACE": 0
+	},
+	"total_counter": 4,
+	"total_bom_resources": 0,
+	"start": "2026-02-14T17:18:10.698526716+01:00",
+	"end": "2026-02-14T17:18:10.885186112+01:00",
+	"paths": [
+		"/home/elihu/GIT/GERION/vulnerable-projects/vuln_django_play"
+	],
+	"queries": [
+		{
+			"query_name": "Passwords And Secrets - Generic Password",
+			"query_id": "487f4be7-3fd9-4506-a07a-eae252180c08",
+			"query_url": "https://docs.kics.io/latest/secrets/",
+			"severity": "HIGH",
+			"platform": "Common",
+			"cwe": "798",
+			"risk_score": "7.8",
+			"cloud_provider": "COMMON",
+			"category": "Secret Management",
+			"experimental": false,
+			"description": "Query to find passwords and secrets in infrastructure code.",
+			"description_id": "d69d8a89",
+			"files": [
+				{
+					"file_name": "../vulnerable-projects/vuln_django_play/Dockerfile",
+					"similarity_id": "842ba94eddfbcf5cfa62d7c3b5d5d9cbbebea16136b01d1c2d1714b272bc5e88",
+					"line": 33,
+					"issue_type": "RedundantAttribute",
+					"search_key": "",
+					"search_line": 0,
+					"search_value": "",
+					"expected_value": "Hardcoded secret key should not appear in source",
+					"actual_value": "Hardcoded secret key appears in source"
+				},
+				{
+					"file_name": "../vulnerable-projects/vuln_django_play/docker-micro.yml",
+					"similarity_id": "7ac68aa217a7cfe88e9494102820194d67d7030cb3c2d3903775d83a20520d4a",
+					"line": 40,
+					"issue_type": "RedundantAttribute",
+					"search_key": "",
+					"search_line": 0,
+					"search_value": "",
+					"expected_value": "Hardcoded secret key should not appear in source",
+					"actual_value": "Hardcoded secret key appears in source"
+				},
+				{
+					"file_name": "../vulnerable-projects/vuln_django_play/docker-micro.yml",
+					"similarity_id": "8ddb08b69eea5cdc549696b7f560e381b23b2560de623c56bbf319b447bb4b3a",
+					"line": 32,
+					"issue_type": "RedundantAttribute",
+					"search_key": "",
+					"search_line": 0,
+					"search_value": "",
+					"expected_value": "Hardcoded secret key should not appear in source",
+					"actual_value": "Hardcoded secret key appears in source"
+				},
+				{
+					"file_name": "../vulnerable-projects/vuln_django_play/docker-micro.yml",
+					"similarity_id": "8fa970628c3358edce391a1dc370c71831bc6f319973fee643a408cca43d7b07",
+					"line": 25,
+					"issue_type": "RedundantAttribute",
+					"search_key": "",
+					"search_line": 0,
+					"search_value": "",
+					"expected_value": "Hardcoded secret key should not appear in source",
+					"actual_value": "Hardcoded secret key appears in source"
+				}
+			]
+		}
+	]
+}

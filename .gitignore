@@ -29,7 +29,6 @@ env/
 ENV/
 .env
 gerion-cli-venv/
-tests/
 
 # Reports
 gerion-cli-*-report.json
