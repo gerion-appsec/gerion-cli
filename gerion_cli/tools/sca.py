@@ -4,9 +4,7 @@ SCA (Software Component Analysis) tool integration.
 import subprocess
 import json
 import os
-
 import shutil
-
 import tempfile
 
 def run_sca_tool(code_path, timeout=180):
@@ -53,10 +51,11 @@ def run_sca_tool(code_path, timeout=180):
             # OSV-Scanner returns a root dict with "results"
             results = data.get('results', [])
             return results if results is not None else []
-            
+
     except subprocess.TimeoutExpired:
         print(f"Error: SCA scan timed out after {timeout} seconds.")
         return []
+            
     except Exception as e:
         print(f"An error occurred while running SCA scan: {e}")
         return []
