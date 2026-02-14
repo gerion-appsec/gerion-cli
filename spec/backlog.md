@@ -41,7 +41,9 @@ Next priority: T3 architecture and quality improvements.
 
 ### Known limitations
 - **No tests**: Zero test coverage. High regression risk.
-- **Raw dict models**: No validation on findings data structure.
+- **Raw dict models**: Findings use raw dicts (no Pydantic). Evaluated in #9 —
+  validation lives in the API Gateway (`InputFinding`), duplicating models here
+  would create a sync burden with no real benefit.
 
 ---
 
@@ -51,63 +53,14 @@ Next priority: T3 architecture and quality improvements.
 |------|------|-------|
 | **T1** | Bugs & Stability | ~~#1, #2, #3~~ DONE |
 | **T2** | Tool Migration — Opengrep + OSV-Scanner + KICS | ~~#4, #5, #6, #7~~ DONE |
-| **T3** | Architecture & Quality — DRY, models, tests | #8, #9, #10, #11 |
+| **T3** | Architecture & Quality — DRY, models, tests | ~~#8, #9~~, #10, #11 |
 | **T4** | Features — New capabilities | #12, #13, #14 |
 
 ---
 
 ## Tier 3 — Architecture & Quality
 
-### #8 Extract Base Scan Command
-
-**Priority**: MEDIUM
-**Effort**: Medium
-**Impact**: Eliminates ~80% code duplication across 4 scan commands
-
-#### Problem
-`secrets_scan.py`, `sca_scan.py`, `iac_scan.py`, and `sast_scan.py` are
-nearly identical. They share the same Typer options, the same metadata
-collection, the same output logic. Only the tool runner and parser differ.
-
-#### Solution
-Create a `commands/base.py` with a `run_scan()` function that accepts:
-- `scan_type: str`
-- `tool_runner: Callable`
-- `output_parser: Callable`
-- Standard Typer options
-
-Each command file becomes a thin wrapper that passes its specific runner/parser.
-
-#### Files to Modify
-- New: `gerion_cli/commands/base.py`
-- `gerion_cli/commands/secrets_scan.py` — Simplify to wrapper
-- `gerion_cli/commands/sca_scan.py` — Simplify to wrapper
-- `gerion_cli/commands/iac_scan.py` — Simplify to wrapper
-- `gerion_cli/commands/sast_scan.py` — Simplify to wrapper
-
 ---
-
-### #9 Add Pydantic Models for Findings
-
-**Priority**: MEDIUM
-**Effort**: Medium
-**Impact**: Runtime validation, better IDE support, clearer data contracts
-
-#### Problem
-All findings are raw dicts created by merging `generate_finding_template()`
-with tool-specific fields. No validation, no type safety, easy to introduce
-typos in field names.
-
-#### Solution
-1. Create `core/models.py` with `Finding` and `Metadata` Pydantic models
-2. Replace dict creation in parsers with model instantiation
-3. Use `.model_dump()` for serialization to API/files
-
-#### Files to Modify
-- New: `gerion_cli/core/models.py`
-- `gerion_cli/tools/parser.py` — Use Pydantic models instead of dicts
-- `gerion_cli/api/client.py` — Serialize models
-- `gerion_cli/output/formats.py` — Serialize models
 
 ---
 
@@ -258,3 +211,5 @@ These are NOT backlog items for the CLI:
 | #5 | Replace Trivy SCA with OSV-Scanner | `osv-scanner scan --format json -r`, UNKNOWN→LOW severity mapping |
 | #6 | Replace Trivy IaC with KICS | `kics scan`, `--queries-path` auto-detection, 2400+ queries |
 | #7 | Rebuild Dockerfile for new tool stack | Multi-stage: tool-builder + kics-builder (Go + UPX) + cli-builder + debian:bookworm-slim final |
+| #8 | Extract Base Scan Command | `commands/base.py` with `run_scan()`, 4 commands reduced to thin wrappers |
+| #9 | Audit Tool Outputs & Finding Model | Research only. No normalizable fields found across all scanners worth adding. See `spec/tool_output_audit.md` |
