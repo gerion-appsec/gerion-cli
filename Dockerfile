@@ -1,5 +1,5 @@
 # Dockerfile (Multi-stage)
-# Final image: Debian Bookworm Slim (no Python runtime needed - CLI is a PyInstaller binary)
+# Final image: Python 3.13 slim (provides Python runtime for premium layer)
 
 # ------------------------------------------------------------------------------
 # Stage 1: tool-builder
@@ -96,7 +96,7 @@ RUN pip install poetry pyinstaller && \
 # Stage 4: final
 # Runtime image - minimal dependencies + all binaries
 # ------------------------------------------------------------------------------
-FROM debian:bookworm-slim
+FROM python:3.13-slim-bookworm
 
 # Install Runtime Dependencies
 # - git: Required by Gitleaks and Opengrep
