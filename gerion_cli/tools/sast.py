@@ -4,19 +4,12 @@ import os
 import shutil
 import tempfile
 from typing import List, Dict, Any, Optional
-from gerion_cli.core.logging import error, warning
-
-# Premium Feature Hooks
-try:
-    from gerion_cli.pro import StructuralEngine
-    HAS_PRO = True
-except ImportError:
-    HAS_PRO = False
+from gerion_cli.core.logging import error
 
 def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
     """
     Run SAST scan using Opengrep.
-    If Premium (HAS_PRO): Runs Structural Search (Context + Reachability) to enrich findings.
+    Findings are enriched by plugins if available.
     
     Returns:
         list: enriched_opengrep_results
@@ -64,12 +57,4 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
             try: os.remove(report_path)
             except: pass
 
-    # 2. Run Premium Structural Engine (If Available)
-    if HAS_PRO and results:
-        try:
-            engine = StructuralEngine()
-            engine.analyze_reachability(results, code_path)
-        except Exception as e:
-            warning(f"Structural Engine failed: {e}")
-            
     return results

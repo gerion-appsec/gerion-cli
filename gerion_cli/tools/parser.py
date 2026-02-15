@@ -6,14 +6,7 @@ from datetime import datetime
 
 secrets_severity = 'High'
 
-# Premium Feature Hooks
-# We determine if PRO features are active by checking if the module exists AND if the 'atom' binary is present.
-# This differentiates the Standard Image (no atom) from Premium Image (atom present), even if code text is copied.
-try:
-    from gerion_cli.pro import enrich_secret_finding, enrich_sca_finding, enrich_sast_finding
-    HAS_PRO = True
-except ImportError:
-    HAS_PRO = False
+# Premium features are now handled via entry_points (FindingEnricher).
 
 # Aux functions
 def generate_finding_template(metadata):
@@ -132,11 +125,6 @@ def parse_secrets_tool_output(output, metadata):
                 'cwe': ['CWE-798'],
             }
             final_finding = {**template, **result}
-            
-            # Apply Premium Enrichment if available
-            if HAS_PRO:
-                enrich_secret_finding(final_finding)
-                
             results.append(final_finding)
             seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
         
@@ -225,11 +213,6 @@ def parse_sca_tool_output(output, metadata):
                     }
 
                     final_finding = {**template, **result}
-                    
-                    # Apply Premium Enrichment if available
-                    if HAS_PRO:
-                        enrich_sca_finding(final_finding, scan_root=metadata.get('code_path', '.'))
-                        
                     results.append(final_finding)
                     seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
         
@@ -298,10 +281,6 @@ def parse_sast_tool_output(output, metadata):
                  final_finding['confidence'] = item['confidence']
             if 'trace' in item:
                  final_finding['trace'] = item['trace']
-            
-            # Enrich if Pro (Calculates Score)
-            if HAS_PRO:
-                enrich_sast_finding(final_finding)
             
             results.append(final_finding)
             seen_ids.add(finding_id)

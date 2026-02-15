@@ -1,6 +1,7 @@
 import time
 import typer
 from typing import Callable, Any, Dict, List, Optional
+from importlib.metadata import entry_points
 from gerion_cli.core import (
     get_metadata,
     LogLevel,
@@ -16,6 +17,18 @@ from gerion_cli.core import (
 )
 from gerion_cli.api import send_to_api
 from gerion_cli.output import save_to_file, findings_table
+
+def _discover_enrichers():
+    """Discover and instantiate premium enrichers via entry_points."""
+    eps = entry_points(group="gerion.enrichers")
+    enrichers = []
+    for ep in eps:
+        try:
+            cls = ep.load()
+            enrichers.append(cls())
+        except Exception as e:
+            warning(f"Failed to load enricher '{ep.name}': {e}")
+    return enrichers
 
 def run_scan(
     scan_type: str,
@@ -68,6 +81,22 @@ def run_scan(
     
     # Parse findings
     findings = tool_parser(tool_output, metadata)
+
+    # Premium enrichment hook (entry_points)
+    enrichers = _discover_enrichers()
+    if enrichers:
+        info(f"Enriching findings with {len(enrichers)} plugins...")
+        for enricher in enrichers:
+            try:
+                findings = enricher.enrich(
+                    findings, 
+                    code_path, 
+                    scan_type, 
+                    raw_output=tool_output
+                )
+            except Exception as e:
+                warning(f"Enricher failed: {e}")
+
     results = {'metadata': metadata, 'findings': findings}
     
     panel(
