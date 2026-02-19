@@ -189,8 +189,24 @@ def parse_sca_tool_output(output, metadata):
                     # Extract severity from affected package if present (database_specific)
                     affected_severity = matched_affected.get('database_specific', {}).get('severity')
                     
-                    # Extract fixed version
-                    for r in matched_affected.get('ranges', []):
+                    # Extract fixed version - Prioritize ECOSYSTEM ranges over GIT
+                    # OSV ranges schema: type can be ECOSYSTEM, GIT, SEMVER
+                    ranges = matched_affected.get('ranges', [])
+                    # Sort to put ECOSYSTEM first, so we extract a semver fixed version if available
+                    # 'ECOSYSTEM' < 'GIT' alphabetically, so sorted() works naturally to put ECOSYSTEM first?
+                    # valid types: ECOSYSTEM, GIT, SEMVER.
+                    # ECOSYSTEM comes first.
+                    # But let's be explicit.
+                    
+                    def range_priority(r):
+                        rtype = r.get('type', '')
+                        if rtype == 'ECOSYSTEM': return 0
+                        if rtype == 'SEMVER': return 1
+                        return 2 # GIT and others last
+                        
+                    sorted_ranges = sorted(ranges, key=range_priority)
+
+                    for r in sorted_ranges:
                         for event in r.get('events', []):
                             if 'fixed' in event:
                                 fixed_version = event['fixed']
