@@ -154,39 +154,102 @@ def parse_sca_tool_output(output, metadata):
             pkg = pkg_wrapper.get('package', {})
             pkg_name = pkg.get('name', 'unknown')
             pkg_version = pkg.get('version', 'unknown')
+            pkg_ecosystem = pkg.get('ecosystem')
             
             # Iterate over vulnerabilities for the package
             for vuln in pkg_wrapper.get('vulnerabilities', []):
                 vuln_id = vuln.get('id', 'unknown')
                 aliases = vuln.get('aliases', [])
-                summary = vuln.get('summary', 'No summary available')
-                details = vuln.get('details', 'No details available')
                 
-                # Severity Extraction
-                # Try database_specific.severity first (e.g. "MODERATE")
-                severity_raw = vuln.get('database_specific', {}).get('severity', 'UNKNOWN')
+                # 1. Description Logic: Details > Summary > ID
+                summary = vuln.get('summary')
+                details = vuln.get('details')
+                description = details if details else (summary if summary else f"Vulnerability {vuln_id} detected in {pkg_name}")
                 
-                severity_map = {
-                    'CRITICAL': 'CRITICAL',
-                    'HIGH': 'HIGH',
-                    'MODERATE': 'MEDIUM',
-                    'LOW': 'LOW',
-                    'UNKNOWN': 'LOW',
-                    'INFO': 'LOW'
-                }
-                severity = severity_map.get(severity_raw.upper(), 'LOW')
-                
-                # Fix Version Extraction
-                fixed_version = None
+                # 2. Package Matching Logic: Find correct affected entry
+                # We need to find the 'affected' block that corresponds to THIS package (name & ecosystem)
+                matched_affected = None
                 for affected in vuln.get('affected', []):
-                    for r in affected.get('ranges', []):
+                    aff_pkg = affected.get('package', {})
+                    if aff_pkg.get('name') == pkg_name:
+                         # Ideally also check ecosystem if available
+                         if pkg_ecosystem and aff_pkg.get('ecosystem') and pkg_ecosystem != aff_pkg.get('ecosystem'):
+                             continue
+                         matched_affected = affected
+                         break
+                
+                # If no strict match found (unlikely in OSV-Scanner output), fallback to first or none? 
+                # OSV-Scanner guarantees the package is affected, so we might just use the first one if name match fails?
+                # But let's stick to name match to be safe.
+                
+                fixed_version = None
+                affected_severity = None
+                
+                if matched_affected:
+                    # Extract severity from affected package if present (database_specific)
+                    affected_severity = matched_affected.get('database_specific', {}).get('severity')
+                    
+                    # Extract fixed version
+                    for r in matched_affected.get('ranges', []):
                         for event in r.get('events', []):
                             if 'fixed' in event:
                                 fixed_version = event['fixed']
                                 break
                         if fixed_version: break
-                    if fixed_version: break
+
+                # 3. Severity Logic: database_specific > matched_affected specific > CVSS > default
+                severity_raw = vuln.get('database_specific', {}).get('severity')
                 
+                # If no top-level severity, check affected-level
+                if not severity_raw and affected_severity:
+                    severity_raw = affected_severity
+                
+                severity_map = {
+                    'CRITICAL': 'CRITICAL',
+                    'HIGH': 'HIGH',
+                    'MEDIUM': 'MEDIUM',
+                    'MODERATE': 'MEDIUM',
+                    'LOW': 'LOW',
+                    'UNKNOWN': 'LOW',
+                    'INFO': 'LOW'
+                }
+                
+                # Severity Logic: database_specific > matched_affected specific > CVSS > default
+                severity_raw = vuln.get('database_specific', {}).get('severity')
+                
+                # If no top-level severity, check affected-level
+                if not severity_raw and affected_severity:
+                    severity_raw = affected_severity
+                
+                severity_map = {
+                    'CRITICAL': 'CRITICAL',
+                    'HIGH': 'HIGH',
+                    'MEDIUM': 'MEDIUM',
+                    'MODERATE': 'MEDIUM',
+                    'LOW': 'LOW',
+                    'UNKNOWN': 'LOW',
+                    'INFO': 'LOW'
+                }
+                
+                if severity_raw:
+                    severity = severity_map.get(severity_raw.upper(), 'LOW')
+                else:
+                    severity = 'LOW' # Default fallback
+                
+                # Version Comparison for Mitigation Context
+                is_false_positive_candidate = False
+                try:
+                    from packaging.version import parse as parse_version
+                    # Clean wildcard versions (e.g. 0.30.* -> 0.30)
+                    clean_pkg_version = pkg_version.replace('.*', '').replace('*', '')
+                    if fixed_version:
+                        if parse_version(clean_pkg_version) >= parse_version(fixed_version):
+                            is_false_positive_candidate = True
+                except ImportError:
+                    pass # packaging not available, skip check
+                except Exception:
+                    pass # Version parsing failed, skip check
+
                 # CVE Extraction (prefer CVE alias)
                 cve = next((alias for alias in aliases if alias.startswith('CVE-')), vuln_id)
                 
@@ -196,11 +259,18 @@ def parse_sca_tool_output(output, metadata):
                 
                 # Check if the finding_id has already been processed
                 if finding_id not in seen_finding_ids:
+                    
+                    mitigation_text = f"Update {pkg_name} to a non-vulnerable version."
+                    if fixed_version:
+                         mitigation_text = f"Fixed in {fixed_version} (Current: {pkg_version})"
+                         if is_false_positive_candidate:
+                             mitigation_text += " - POSSIBLE FALSE POSITIVE: Current version appears newer than fix."
+
                     result = {
                         'finding_id': finding_id,
                         'title': f"{vuln_id} - {pkg_name}",
-                        'description': summary,
-                        'mitigation': f"Update {pkg_name} to {fixed_version}" if fixed_version else f"Update {pkg_name} to a non-vulnerable version.",
+                        'description': description,
+                        'mitigation': mitigation_text,
                         'severity': severity,
                         'security_scope': 'Code',
                         'scan_type': 'SCA',
@@ -211,6 +281,10 @@ def parse_sca_tool_output(output, metadata):
                         'cwe': vuln.get('database_specific', {}).get('cwe_ids', []),
                         'cve': cve
                     }
+
+                    if is_false_positive_candidate:
+                         # Skip adding this finding as it is a false positive
+                         continue
 
                     final_finding = {**template, **result}
                     results.append(final_finding)
