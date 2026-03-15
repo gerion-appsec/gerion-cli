@@ -1,0 +1,99 @@
+# =====================
+# Version Control
+# =====================
+.git
+.gitignore
+
+# =====================
+# Python Artifacts
+# =====================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# =====================
+# Virtual Environments
+# =====================
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+gerion-cli-venv/
+
+# =====================
+# Python Tools & Caches
+# =====================
+.tox
+.coverage
+.coverage.*
+.cache
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# =====================
+# Test & Build Artifacts
+# =====================
+tests/
+dist/
+build/
+*.egg-info/
+*.spec
+
+# =====================
+# Logs & Reports
+# =====================
+pip-log.txt
+pip-delete-this-directory.txt
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+report.json
+output.json
+gerion-cli-*.json
+
+# =====================
+# Dependency Locks (regenerated in Docker build)
+# =====================
+poetry.lock
+
+# =====================
+# Editor & OS Files
+# =====================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =====================
+# Documentation (except README.md)
+# =====================
+*.md
+!README.md
+
+# =====================
+# Project Metadata
+# =====================
+LICENSE
+NOTICE
+env.example
+.env
+
+# =====================
+# Docker & Compose
+# =====================
+.dockerignore
+Dockerfile
+docker-compose.yml 

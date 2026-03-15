@@ -1,23 +1,56 @@
-# virtual envs
-gerion-cli-venv
 
-# env vars
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
 .env
+gerion-cli-venv/
 
-# Python cache
-__pycache__
+# Reports
+gerion-cli-*-report.json
+*.sarif
+scan_results.json
+gerion-cli-scan-results.json
+gerion-cli-scan-results.md
+
+# PyInstaller
+*.spec
 
 # Dependencies locks
 poetry.lock
 
-# Not desired outputs
-report.json
-output.json
+# IDE
+.vscode/
+.idea/
 
-# tests
-tests/
+# Premium Module (Open Core Strategy)
+# Ignore all files in pro/ and Dockerfile.premium
+pro/
+Dockerfile.premium
 
-# dist
-dist/
-build/
-main.spec
+# Temporary Testing
+verify_scoring.py

@@ -1,9 +1,10 @@
 import typer
 from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID
-from gerion_cli.tools import run_sca_tool, parse_sca_tool_output
+from gerion_cli.tools import run_sast_tool, parse_sast_tool_output
 from gerion_cli.commands.base import run_scan
 
-def sca_scan(
+
+def sast_scan(
     code_path: str = typer.Argument(".", help="Path to the code directory to scan", show_default=True),
     api_url: str = typer.Option(None, "--api-url", "-a", envvar="GERION_API_URL", help="API Gateway URL for sending results"),
     client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help=f"Client ID for API authentication (default: {CLIENT_ID})"),
@@ -14,31 +15,17 @@ def sca_scan(
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
-    Scan project dependencies for known vulnerabilities using OSV-Scanner.
+    Scan codebase for security vulnerabilities using Opengrep (SAST).
     
-    This command analyzes package dependencies (npm, pip, maven, etc.) and identifies
-    known CVEs (Common Vulnerabilities and Exposures) in the installed packages using
-    OSV-Scanner.
-    Results can be sent to the API Gateway or saved to a local file.
-    
-    Examples:
-        # Scan current directory
-        gerion-cli sca-scan
-        
-        # Scan specific directory
-        gerion-cli sca-scan /path/to/code
-        
-        # Save results to file
-        gerion-cli sca-scan --output-file results.json
-        
-        # Send to API Gateway
-        gerion-cli sca-scan --api-url https://api.gerion.com --api-key YOUR_KEY
+    This command performs a Static Application Security Testing (SAST) using Opengrep to identify
+    potential vulnerabilities in the code. If Premium is active, it also performs 
+    Deep Reachability Analysis using Atom.
     """
     run_scan(
-        scan_type="SCA",
-        tool_name="OSV-Scanner",
-        tool_runner=run_sca_tool,
-        tool_parser=parse_sca_tool_output,
+        scan_type="SAST",
+        tool_name="Opengrep",
+        tool_runner=run_sast_tool,
+        tool_parser=parse_sast_tool_output,
         code_path=code_path,
         api_url=api_url,
         client_id=client_id,

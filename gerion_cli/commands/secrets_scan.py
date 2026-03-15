@@ -1,57 +1,49 @@
 import typer
-from typing_extensions import Annotated
-import json
-from gerion_cli.utils.metadata_utils import get_metadata
-from gerion_cli.utils.secrets_tool_utils import run_secrets_tool
-from gerion_cli.utils.parsing_utils import parse_secrets_tool_output
+from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID
+from gerion_cli.tools import run_secrets_tool, parse_secrets_tool_output
+from gerion_cli.commands.base import run_scan
 
-app = typer.Typer()
-
-# Aux functions
-def save_to_json(results, filename: str):
-    with open(filename, 'w') as json_file:
-        json.dump(results, json_file, indent=4)
-    typer.echo(f"Results saved to {filename}")
-
-def send_to_api(results, api_url: str, api_token: str):
-    import httpx
-    
-    api_url = f'{api_url}/api/client/findings'
-    headers = {
-        "Authorization": f"Bearer {api_token}",
-        "Content-Type": "application/json"
-    }
-
-    try:
-        response = httpx.post(api_url, headers=headers, json=json.dumps(results))
-
-        if response.status_code >= 200 and response.status_code < 300:
-            typer.echo("Data sent to API successfully.")
-        else:
-            typer.echo(f"Error sending data to API: {response.status_code}")
-
-    except httpx.HTTPError as e:
-        typer.echo(f"HTTP Error: {e}")
-
-    except Exception as e:
-        typer.echo(f"Unexpected Error: {e}")
-
-@app.command()
 def secrets_scan(
-    code_path: Annotated[str, typer.Argument()] = ".",
-    api_url: str = typer.Option(None, help="API URL for sending results"),
-    api_token: str = typer.Option(None, help="API token for authentication"),
-    output_file: str = typer.Option(None, help="Save results to a JSON file")
+    code_path: str = typer.Argument(".", help="Path to the code directory to scan", show_default=True),
+    api_url: str = typer.Option(None, "--api-url", "-a", envvar="GERION_API_URL", help="API Gateway URL for sending results"),
+    client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help=f"Client ID for API authentication (default: {CLIENT_ID})"),
+    api_key: str = typer.Option(None, "--api-key", "-k", envvar="GERION_API_KEY", hide_input=True, help="M2M API key for authentication"),
+    output_file: str = typer.Option(None, "--output-file", "-o", help="Save results to a file (disables API sending)"),
+    format: OutputFormat = typer.Option(None, "--format", "-f", help="Output format for file saving or stdout (json, markdown, sarif)"),
+    timeout: int = typer.Option(180, "--timeout", "-t", help="Tool execution timeout in seconds"),
+    log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
-    metadata = get_metadata()
-    secrets_tool_output = run_secrets_tool(code_path)
-    results = {'metadata':metadata, 'findings': parse_secrets_tool_output(secrets_tool_output, metadata)}
-
-    if api_url and api_token:
-        send_to_api(results, api_url, api_token)
+    """
+    Scan codebase for hardcoded secrets using Gitleaks.
     
-    if output_file:
-        save_to_json(results, output_file)
+    This command detects API keys, passwords, tokens, and other sensitive information
+    that may be accidentally committed to the codebase. Results can be sent to the
+    API Gateway or saved to a local file.
     
-    if not (api_url or api_token or output_file):
-        typer.echo(results)
+    Examples:
+        # Scan current directory
+        gerion-cli secrets-scan
+        
+        # Scan specific directory
+        gerion-cli secrets-scan /path/to/code
+        
+        # Save results to file
+        gerion-cli secrets-scan --output-file results.json
+        
+        # Send to API Gateway
+        gerion-cli secrets-scan --api-url https://api.gerion.com --api-key YOUR_KEY
+    """
+    run_scan(
+        scan_type="Secrets",
+        tool_name="Gitleaks",
+        tool_runner=run_secrets_tool,
+        tool_parser=parse_secrets_tool_output,
+        code_path=code_path,
+        api_url=api_url,
+        client_id=client_id,
+        api_key=api_key,
+        output_file=output_file,
+        format=format,
+        timeout=timeout,
+        log_level=log_level
+    )

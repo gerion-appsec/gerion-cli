@@ -1,120 +1,152 @@
-# Gerion CLI
+# 🚀 Gerion CLI
 
-A powerful command-line interface for performing security scans on your codebase. The Gerion CLI allows you to scan for secrets and perform software component analysis (SCA) with ease.
+> **A blazing-fast, all-in-one security scanner for your codebase.**  
+> Find secrets, vulnerable dependencies, and more — right from your terminal!
 
-## Features
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
 
-- **Secrets Scan**: Detect sensitive information such as API keys, passwords, and other secrets in your code.
-- **Software Component Analysis (SCA)**: Identify vulnerabilities in your project's dependencies.
-- **API Integration**: Send scan results to a specified API for further processing or storage.
-- **JSON Output**: Save scan results to a JSON file for easy integration with other tools.
+---
 
-## Installation
-
-To install the Gerion CLI, you can use pip:
-
-```sh
-pip install gerion-cli
-```
-
-Alternatively, you can clone this repository and install it locally:
+## ⚡️ Quick Start
 
 ```sh
 git clone https://github.com/your-repo/gerion-cli.git
 cd gerion-cli
-pip install .
+poetry install
 ```
-
-## Usage
-
-### Secrets Scan
-
-To perform a secrets scan on your codebase, run the following command:
-
-```sh
-gerion-cli secrets-scan [OPTIONS] [CODE_PATH]
-```
-
-**Options:**
-
-- `--api-url TEXT`: API URL for sending results.
-- `--api-token TEXT`: API token for authentication.
-- `--output-file TEXT`: Save results to a JSON file.
-
-**Example:**
-
-```sh
-gerion-cli secrets-scan --api-url https://example.com/api --api-token abc123 --output-file scan_results.json /path/to/code
-```
-
-### Software Component Analysis (SCA)
-
-To perform software component analysis on your codebase, run the following command:
-
-```sh
-gerion-cli sca-scan [OPTIONS] [CODE_PATH]
-```
-
-**Options:**
-
-- `--api-url TEXT`: API URL for sending results.
-- `--api-token TEXT`: API token for authentication.
-- `--output-file TEXT`: Save results to a JSON file.
-
-**Example:**
-
-```sh
-gerion-cli sca-scan --api-url https://example.com/api --api-token abc123 --output-file scan_results.json /path/to/code
-```
-
-## Development
-
-### Contributing
-
-We welcome contributions from the community! To get started:
-
-1. Fork this repository.
-2. Create a new branch for your feature or bug fix.
-3. Make your changes and commit them with descriptive messages.
-4. Push your changes to your forked repository.
-5. Submit a pull request.
-
-### Requirements
-
-- Python 3.7 or higher
-- Typer
-- HTTPX
-
-### Setup Development Environment
-
-1. Clone the repository:
-
-    ```sh
-    git clone https://github.com/your-repo/gerion-cli.git
-    cd gerion-cli
-    ```
-
-2. Install dependencies:
-
-    ```sh
-    pip install -r requirements.txt
-    ```
-
-3. Run the CLI locally:
-
-    ```sh
-    python main.py secrets-scan --api-url https://example.com/api --api-token abc123 /path/to/code
-    python main.py sca-scan --api-url https://example.com/api --api-token abc123 /path/to/code
-    ```
-
-## License
-
-This project is licensed under the Apache2.0 License. See the [LICENSE](LICENSE) file for more details.
-
-## Acknowledgments
-
-We would like to thank all contributors and users who have helped make this tool better.
 
 ---
 
-Feel free to reach out if you have any questions or need further assistance!
+## 🛠️ Installation
+
+- **With Poetry (recommended):**
+  ```sh
+  git clone https://github.com/your-repo/gerion-cli.git
+  cd gerion-cli
+  poetry install
+  ```
+
+- **With Docker:**
+  ```sh
+  docker build -t gerion-cli .
+  ```
+
+---
+
+## 🚦 Usage
+
+### SAST Scan
+
+```sh
+poetry run python -m gerion_cli.main sast-scan [OPTIONS] [CODE_PATH]
+# Or with Docker:
+docker run --rm -v "$PWD:/code" gerion-cli sast-scan /code
+```
+
+### Secrets Scan
+
+```sh
+poetry run python -m gerion_cli.main secrets-scan [OPTIONS] [CODE_PATH]
+# Or with Docker:
+docker run --rm -v "$PWD:/code" gerion-cli secrets-scan /code
+```
+
+### SCA Scan
+
+```sh
+poetry run python -m gerion_cli.main sca-scan [OPTIONS] [CODE_PATH]
+# Or with Docker:
+docker run --rm -v "$PWD:/code" gerion-cli sca-scan /code
+```
+
+### IaC Scan
+
+```sh
+poetry run python -m gerion_cli.main iac-scan [OPTIONS] [CODE_PATH]
+# Or with Docker:
+docker run --rm -v "$PWD:/code" gerion-cli iac-scan /code
+```
+
+### Common Options
+
+- `--api-url TEXT`         API Gateway URL for sending results
+- `--client-id TEXT`       Client ID for API authentication (default: gerion-cli-{version}, e.g., gerion-cli-0.1.0)
+- `--api-key TEXT`         M2M API key for authentication
+- `--output-file TEXT`     Save results to a file (disables API sending)
+- `--format [json|markdown|sarif]`  Output format (default: json)
+- `--log-level [debug|info|warning|error|critical]`  Set logging level
+- `--queries-path TEXT`    (IaC only) Path to KICS queries directory
+
+### Environment Variables
+
+You can set credentials as environment variables (recommended for CI/CD):
+
+```sh
+export GERION_API_URL="https://api.gerion.com"
+export GERION_API_KEY="your-m2m-api-key"
+```
+
+**Note**: 
+- The `CLIENT_ID` is automatically set to `gerion-cli-{version}` (e.g., `gerion-cli-0.1.0`) based on the CLI version. This allows the API to identify which version of the CLI is making requests. You can override it with `GERION_CLIENT_ID` if needed, but it's not recommended.
+- You need to create an M2M API key via the Gerion web interface or API before using the CLI. The API key is used for Machine-to-Machine authentication with the API Gateway.
+
+---
+
+## ✨ Features
+
+- 🐛 **SAST Scan**: Find code security issues and bugs using **Opengrep**.
+- 🔑 **Secrets Scan**: Detect API keys, passwords, and other secrets in your code using **Gitleaks**.
+- 🛡️ **SCA (Dependency Analysis)**: Find vulnerabilities in your dependencies using **OSV-Scanner**.
+- 🏗️ **IaC Scan**: Detect misconfigurations in Infrastructure as Code (Terraform, Kubernetes, etc.) using **KICS**.
+- ☁️ **API Integration**: Optionally send results to a remote API.
+- 🖨️ **Multiple Output Formats**: JSON, Markdown, SARIF.
+- 🎨 **Beautiful Console Output**: Rich tables and colored logs.
+- 🧠 **Automatic Git Metadata**: Each scan includes repo, branch, and commit info.
+- 🔒 **Secure Credentials**: Secrets are never printed in logs.
+- 🐳 **All-in-One Docker Image**: No need to install tools manually.
+
+### 💎 Open Core Architecture
+
+Gerion CLI follows an **Open Core** model:
+
+-   **Gerion CLI (Core)**: This repository. Contains standard SAST, SCA, Secrets, and IaC scanning capabilities.
+-   **Gerion Premium**: Advanced features including **Trace Graphs**, **Deep Reachability Analysis**, and **Risk Scoring** are available in the Premium module.
+    -   Premium features are built as an overlay on top of this core repository.
+    -   See `gerion-cli-premium` (if accessible) for building the Pro version.
+
+---
+
+## 🖥️ Example Output
+
+```
+┌──────────┬──────────────────────────────┬──────────────┐
+│ Severity │ Title                        │ File:Line    │
+├──────────┼──────────────────────────────┼──────────────┤
+│ 🔴 High  │ Hard coded secret: AWS_KEY   │ config.py:42 │
+└──────────┴──────────────────────────────┴──────────────┘
+```
+
+---
+
+## 🤝 Contributing
+
+1. Fork this repository.
+2. Create a new branch for your feature or bug fix.
+3. Make your changes and commit them.
+4. Push to your fork and submit a pull request.
+
+---
+
+## 📄 License
+
+Apache 2.0. See [LICENSE](LICENSE).
+
+---
+
+## 🔗 Links
+
+- [Documentation](#) <!-- Add real link if available -->
+- [Issues](../../issues)
+- [Gerion AppSec](https://gerion-appsec.com)
