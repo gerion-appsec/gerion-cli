@@ -6,16 +6,19 @@ authors = ["gerion-appsec <info@gerion-appsec.com>"]
 readme = "README.md"
 
 [tool.poetry.scripts]
-gerion-cli = "gerion_cli.main:app"
+gerion = "gerion_cli.main:app"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-typer = "^0.15.2"
+typer = "^0.24.0"
 gitpython = "^3.1.44"
-httpx = "^0.27.0"
-rich = "^13.7.0"
+httpx = "^0.28.0"
+rich = "^14.0.0"
 pydantic = "^2.6.0"
 fpdf2 = "^2.8.5"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.0.2"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
