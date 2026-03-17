@@ -80,6 +80,7 @@ Thumbs.db
 # =====================
 # Documentation (except README.md)
 # =====================
+spec/
 *.md
 !README.md
 

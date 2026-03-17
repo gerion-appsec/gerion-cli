@@ -1,10 +1,13 @@
 # Project Context for LLMs
 
 ## Identity
-**Project**: Gerion CLI v0.1.0 (pyproject.toml)
+
+**Project**: Gerion CLI v0.1.0 (`pyproject.toml`)
 **Type**: Python CLI Application
 **Purpose**: Unified command-line interface for security scanning (SAST, SCA, Secrets, IaC) with API Gateway integration and multi-format output.
 **Tests**: 5 test files + 4 JSON fixtures in `tests/`. Covers parsers, metadata, auth, finding template, output formats.
+
+---
 
 ## Architecture Vision
 
@@ -29,6 +32,7 @@ Gerion API Gateway or local files.
 | Risk scoring | N/A (Premium: delegates to motor) | N/A | Raw factors |
 
 ### Design Principles
+
 - **Tool Agnostic**: Abstract security tool execution behind unified interface
 - **Flexible Output**: Support both API submission and local file output
 - **CI/CD Ready**: Designed for integration in CI/CD pipelines with environment variable support
@@ -36,20 +40,23 @@ Gerion API Gateway or local files.
 - **Open Core**: Core scanning is open source; Premium features (trace, reachability, risk scoring) are an overlay
 
 ### Open Core Architecture
+
 - **Core Image**: Built from `gerion-cli`. Contains SAST, SCA, Secrets, IaC scanning.
 - **Premium Image**: Built by overlaying `gerion-cli-premium` on top of Core.
   - Adds **Trace Graphs**, **Deep Reachability Analysis**, **Risk Scoring**.
-  - Premium hooks: `gerion_cli/pro/` module (imported conditionally via `try/except ImportError`).
+  - Premium enrichers are discovered at runtime via Python entry points (`gerion.enrichers` group).
   - Premium detection: `HAS_PRO` flag in `tools/sast.py` and `tools/parser.py`.
+
+---
 
 ## Technical Stack
 
 | Component | Technology | Version |
 |-----------|-----------|---------|
-| Framework | Typer (CLI, built on Click) | ^0.15.2 |
+| Framework | Typer (CLI, built on Click) | ^0.24.0 |
 | Python | 3.12+ | |
-| HTTP Client | httpx (sync) | ^0.27.0 |
-| Terminal UI | Rich (tables, panels, logging) | ^13.7.0 |
+| HTTP Client | httpx (sync) | ^0.28.0 |
+| Terminal UI | Rich (tables, panels, logging) | ^14.0.0 |
 | Data Validation | Pydantic (SecretStr only, models are raw dicts) | ^2.6.0 |
 | Git Integration | GitPython | ^3.1.44 |
 | PDF Generation | fpdf2 | ^2.8.5 |
@@ -57,12 +64,22 @@ Gerion API Gateway or local files.
 | Build | PyInstaller (single binary) | |
 
 ### External Security Tools
-| Tool | Purpose | Command Pattern | License |
-|------|---------|----------------|---------|
-| Gitleaks | Secrets detection | `gitleaks dir <path> --exit-code 0 -f json -r <report>` | MIT |
-| Opengrep | SAST (code analysis) | `opengrep scan --config auto --json --output <report> --disable-version-check <path>` | LGPL 2.1 |
-| OSV-Scanner | SCA (vuln scanning) | `osv-scanner scan --format json --output <report> -r <path>` | Apache 2.0 |
-| KICS | IaC (misconfig scanning) | `kics scan --path <path> --output-path <dir> --report-formats json` | Apache 2.0 |
+
+| Tool | Version | Purpose | Command Pattern | License |
+|------|---------|---------|----------------|---------|
+| Gitleaks | 8.24.2 | Secrets detection | `gitleaks dir <path> --exit-code 0 -f json -r <report>` | MIT |
+| Opengrep | 1.16.0 | SAST (code analysis) | `opengrep scan --config auto --json --output <report> --disable-version-check <path>` | LGPL 2.1 |
+| OSV-Scanner | 2.3.3 | SCA (vuln scanning) | `osv-scanner scan --format json --output <report> -r <path>` | Apache 2.0 |
+| KICS | 2.1.5 | IaC (misconfig scanning) | `kics scan --path <path> --output-path <dir> --report-formats json` | Apache 2.0 |
+
+### Tool Selection Rationale
+
+- **Opengrep over Semgrep**: Community fork after Semgrep's Dec 2024 license change. Same rules, same output format. Backed by Endor Labs, Aikido, Orca, Jit. LGPL 2.1. Install via binary only (PyPI package was hijacked).
+- **OSV-Scanner over Trivy SCA**: Native OSV format output — Risk Detector's `mapper.rs` already consumes OSV natively. Broader DB (aggregates NVD, GitHub Advisory, PyPI, npm, Go). Focused SCA-only tool.
+- **KICS over Checkov/Trivy IaC**: Go binary (no Python bloat in Docker image), 2400+ queries, supports 15+ IaC formats (Terraform, K8s, Dockerfile, CloudFormation, Helm, Ansible, OpenAPI, Pulumi). Apache 2.0.
+- **Gitleaks over TruffleHog**: TruffleHog rejected due to AGPL-3.0 risk for an Apache 2.0 Open Core project (subprocess invocation as derivative work is legally gray). detect-secrets (Yelp) rejected as essentially unmaintained.
+
+---
 
 ## Source Tree
 
@@ -116,15 +133,14 @@ gerion-cli/
 │   ├── test_auth.py                # M2M API authentication tests
 │   └── test_output.py              # JSON/Markdown/SARIF output tests
 ├── spec/
-│   ├── plan.md                     # Technical specification
 │   ├── project_context.md          # This document
-│   ├── agent_rules.md              # LLM agent development rules
-│   ├── backlog.md                  # Development backlog
-│   └── tool_output_audit.md        # #9 audit results (no model changes needed)
-├── Dockerfile                      # Multi-stage: builder (tools) -> CLI (PyInstaller) -> final (Debian slim)
-├── pyproject.toml                  # Poetry config
-└── requirements.txt                # Python dependencies (legacy)
+│   └── agent_rules.md              # LLM agent development rules
+├── Dockerfile                      # Multi-stage: tool-builder + kics-builder + cli-builder + final (python:3.13-slim)
+├── Makefile                        # Install targets for Python deps and scanner binaries
+└── pyproject.toml                  # Poetry config
 ```
+
+---
 
 ## Command Pattern
 
@@ -154,12 +170,14 @@ run_scan(
    fallback → `findings_table()` (stdout)
 
 The `scan-all` command runs all 4 scans sequentially through the same `run_scan()`.
-When `--output-file` or `--format` is set, individual scans are suppressed (no file/format/API)
-and `scan_all` handles aggregated output at the end using the same priority chain.
+When `--output-file` or `--format` is set, individual scans are suppressed and `scan_all`
+handles aggregated output at the end using the same priority chain.
 
 The `report` command is different: it authenticates, fetches findings from the API, and renders them
 using its own `ReportFormat` enum (text, json, markdown, pdf). Uses `--output-file` (unified with
 scan commands) and requires `--api-url` (no hardcoded default).
+
+---
 
 ## Data Models
 
@@ -214,34 +232,41 @@ All findings share this template from `parser.py:generate_finding_template()`:
 | `scan_type` | str | Set by command handler |
 | `scan_duration` | float | Seconds elapsed during tool execution (set by `base.py`) |
 
+---
+
 ## Authentication Flow
 
 ```
 CLI (M2M API Key) -> POST /api/v1/auth/m2m/authenticate -> JWT access_token
-CLI (JWT Bearer)  -> POST /api/v1/findings -> Submit findings
-CLI (JWT Bearer)  -> GET  /api/v1/findings -> Fetch for report
+CLI (JWT Bearer)  -> POST /api/v1/findings               -> Submit findings
+CLI (JWT Bearer)  -> GET  /api/v1/findings               -> Fetch for report
 ```
+
+---
 
 ## Docker Image
 
-Multi-stage build:
-1. **Builder**: Downloads Opengrep, OSV-Scanner, KICS, and Gitleaks binaries, builds CLI with PyInstaller
-2. **Final**: Python 3.13 slim + copies binaries
-3. Runs as non-root `gerion` user (UID 1000)
-4. Volumes: `/code` (scan target), `/output` (results)
+Four-stage build (`python:3.13-slim-bookworm` base for all stages except kics-builder):
 
-## Known Limitations (updated 2026-02-15)
+1. **tool-builder**: Downloads Gitleaks, Opengrep, and OSV-Scanner binaries into `/usr/local/bin/`
+2. **kics-builder** (`golang:1.23`): Clones KICS at the pinned version tag, builds with `go build -ldflags="-s -w"`, compresses with UPX
+3. **cli-builder**: Installs Poetry + PyInstaller, strips `gerion_cli/pro/` (Premium code), produces a single `gerion` binary via PyInstaller
+4. **final**: Copies all binaries from the three builder stages; runs as non-root `gerion` user (UID 1000); entrypoint is `gerion`; default CMD is `--help`
 
-1. **Raw dict models**: Findings use raw dicts (no Pydantic in CLI). Evaluated in #9 —
-   validation lives in the API Gateway (`InputFinding`), duplicating models here
-   would create a sync burden with no real benefit.
-2. **Inconsistent error returns**: `secrets.py` returns `None` on general errors,
-   `sca.py`/`iac.py`/`sast.py` return `[]`. The `base.py` handles both cases.
-3. **`--log-level` per-command only**: Not promoted to global callback. Minor UX
-   inconvenience but low priority.
+Volumes: `/code` (scan target), `/output` (results).
+KICS built-in queries are used (empty `/usr/local/bin/assets/queries` dir is required for KICS startup but the binary falls back to internal rules when empty).
+
+---
+
+## Known Limitations
+
+1. **Raw dict models**: Findings use raw dicts (no Pydantic in CLI). Validation lives in the API Gateway (`InputFinding`); duplicating models here would create a sync burden with no real benefit.
+2. **Inconsistent error returns**: `secrets.py` returns `None` on general errors; `sca.py`/`iac.py`/`sast.py` return `[]`. `base.py` handles both cases.
+3. **`--log-level` per-command only**: Not promoted to a global callback. Minor UX inconvenience, low priority.
 
 ## Key Constraints
+
 - **Python 3.12+**: Required minimum version
 - **External tools**: Gitleaks, Opengrep, OSV-Scanner, and KICS must be available in PATH
 - **API Gateway**: M2M authentication required for API features
-- **Premium overlay**: Pro features loaded conditionally; core must work without them
+- **Premium overlay**: Pro features loaded conditionally via entry points; core must work without them
