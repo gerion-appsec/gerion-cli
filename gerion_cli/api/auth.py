@@ -28,7 +28,7 @@ def authenticate_with_api(api_url: str, client_id: str, api_key: SecretString):
     try:
         debug(f"Authenticating with M2M API key at: {auth_url}")
         debug(f"Client ID: {client_id}")
-        response = httpx.post(auth_url, json=auth_data, headers=headers)
+        response = httpx.post(auth_url, json=auth_data, headers=headers, follow_redirects=True)
         
         debug(f"Response status: {response.status_code}")
         
