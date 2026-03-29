@@ -22,16 +22,16 @@ def secrets_scan(
     
     Examples:
         # Scan current directory
-        gerion-cli secrets-scan
+        gerion secrets-scan
         
         # Scan specific directory
-        gerion-cli secrets-scan /path/to/code
+        gerion secrets-scan /path/to/code
         
         # Save results to file
-        gerion-cli secrets-scan --output-file results.json
+        gerion secrets-scan --output-file results.json
         
         # Send to API Gateway
-        gerion-cli secrets-scan --api-url https://api.gerion.com --api-key YOUR_KEY
+        gerion secrets-scan --api-url https://api.gerion.com --api-key YOUR_KEY
     """
     run_scan(
         scan_type="Secrets",

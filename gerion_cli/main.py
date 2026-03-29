@@ -7,7 +7,7 @@ from gerion_cli.core.config import __version__
 def version_callback(value: bool):
     """Callback to handle --version flag."""
     if value:
-        print(f"gerion-cli {__version__}")
+        print(f"gerion {__version__}")
         raise typer.Exit()
 
 
