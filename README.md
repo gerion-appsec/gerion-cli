@@ -12,10 +12,10 @@ A unified command-line interface for running security scans on codebases. Gerion
 
 | Type | Tool | Version | Detects |
 |------|------|---------|---------|
-| SAST | [Opengrep](https://github.com/opengrep/opengrep) | 1.16.0 | Code vulnerabilities and anti-patterns |
-| SCA | [OSV-Scanner](https://github.com/google/osv-scanner) | 2.3.3 | Vulnerable dependencies (CVEs) |
-| IaC | [KICS](https://github.com/Checkmarx/kics) | 2.1.5 | Infrastructure as Code misconfigurations |
-| Secrets | [Gitleaks](https://github.com/gitleaks/gitleaks) | 8.24.2 | Hardcoded secrets and credentials |
+| SAST | [Opengrep](https://github.com/opengrep/opengrep) | 1.16.5 | Code vulnerabilities and anti-patterns |
+| SCA | [OSV-Scanner](https://github.com/google/osv-scanner) | 2.3.5 | Vulnerable dependencies (CVEs) |
+| IaC | [KICS](https://github.com/Checkmarx/kics) | 2.1.20 | Infrastructure as Code misconfigurations |
+| Secrets | [Gitleaks](https://github.com/gitleaks/gitleaks) | 8.30.1 | Hardcoded secrets and credentials |
 
 ---
 
@@ -43,14 +43,14 @@ Individual targets are also available:
 
 ```sh
 make install-python       # Poetry install only
-make install-tools        # All scanner binaries only
-make install-gitleaks
-make install-opengrep
-make install-osv-scanner
-make install-kics
+make gitleaks             # Install Gitleaks only
+make opengrep             # Install Opengrep only
+make osv-scanner          # Install OSV-Scanner only
+make kics                 # Install KICS only
 
+make uninstall            # Uninstall everything
 make check                # Verify all tools are available in PATH
-make clean                # Remove the Poetry virtual environment
+make clean                # Uninstall everything and remove the Poetry virtual environment
 ```
 
 ### With Docker
@@ -75,7 +75,7 @@ export GERION_API_KEY="your-m2m-api-key"
 
 Copy `env.example` to `.env` for local development. All options can also be passed directly as CLI flags on each command.
 
-The `CLIENT_ID` is set automatically to `gerion-cli-{version}` (e.g. `gerion-cli-0.1.0`). It can be overridden with `GERION_CLIENT_ID` if needed.
+The `CLIENT_ID` is set automatically to `gerion-{version}` (e.g. `gerion-1.0.0`). It can be overridden with `GERION_CLIENT_ID` if needed.
 
 ---
 
@@ -97,7 +97,7 @@ Each scan command accepts the same core set of options:
 |--------|---------|-------------|
 | `--api-url` | `GERION_API_URL` | Gerion API Gateway base URL |
 | `--api-key` | `GERION_API_KEY` | M2M API key for authentication |
-| `--client-id` | `GERION_CLIENT_ID` | Client identifier (default: `gerion-cli-{version}`) |
+| `--client-id` | `GERION_CLIENT_ID` | Client identifier (default: `gerion-{version}`) |
 | `--output-file` | — | Write results to a file (suppresses API and console output) |
 | `--format` | — | Output format for stdout: `json`, `markdown`, `sarif`, `table` |
 | `--timeout` | — | Scanner execution timeout in seconds (default: 180) |
@@ -192,4 +192,4 @@ Apache 2.0 — see [LICENSE](LICENSE).
 ## Links
 
 - [Issues](https://github.com/gerion-appsec/gerion-cli/issues)
-- [Gerion AppSec](https://gerion-appsec.com)
+- [gerion.dev](https://gerion.dev)

@@ -2,7 +2,7 @@
 
 ## Identity
 
-**Project**: Gerion CLI v0.1.0 (`pyproject.toml`)
+**Project**: Gerion CLI v1.0.0 (`pyproject.toml`)
 **Type**: Python CLI Application
 **Purpose**: Unified command-line interface for security scanning (SAST, SCA, Secrets, IaC) with API Gateway integration and multi-format output.
 **Tests**: 5 test files + 4 JSON fixtures in `tests/`. Covers parsers, metadata, auth, finding template, output formats.
@@ -18,18 +18,16 @@ Gerion API Gateway or local files.
 
 ### Responsibility Boundary
 
-| Concern | CLI (this project) | API Gateway (consumer) | Risk Detector (motor) |
-|---------|-------------------|----------------------|----------------------|
-| Scanner orchestration | Runs tools, collects output | N/A | N/A |
-| Output parsing | Normalizes tool JSON to Findings | N/A | N/A |
-| Git metadata | Extracts repo/branch/commit | N/A | N/A |
-| CI/CD detection | GitHub Actions, GitLab CI, Jenkins | N/A | N/A |
-| Authentication | M2M API key -> JWT token | Validates, issues JWT | N/A |
-| Findings submission | POST to API Gateway | Stores, deduplicates | N/A |
-| Report generation | Fetches from API, renders formats | Serves findings | N/A |
-| Output formatting | JSON, Markdown, SARIF, PDF, text | N/A | N/A |
-| Reachability analysis | N/A (Premium: delegates to motor) | N/A | BFS traversal, CPG |
-| Risk scoring | N/A (Premium: delegates to motor) | N/A | Raw factors |
+| Concern | CLI (this project) | API Gateway (consumer) |
+|---------|-------------------|----------------------|
+| Scanner orchestration | Runs tools, collects output | N/A |
+| Output parsing | Normalizes tool JSON to Findings | N/A |
+| Git metadata | Extracts repo/branch/commit | N/A |
+| CI/CD detection | GitHub Actions, GitLab CI, Jenkins | N/A |
+| Authentication | M2M API key -> JWT token | Validates, issues JWT |
+| Findings submission | POST to API Gateway | Stores, deduplicates |
+| Report generation | Fetches from API, renders formats | Serves findings |
+| Output formatting | JSON, Markdown, SARIF, PDF, text | N/A |
 
 ### Design Principles
 
@@ -37,15 +35,6 @@ Gerion API Gateway or local files.
 - **Flexible Output**: Support both API submission and local file output
 - **CI/CD Ready**: Designed for integration in CI/CD pipelines with environment variable support
 - **Docker Native**: Single Docker image with all dependencies
-- **Open Core**: Core scanning is open source; Premium features (trace, reachability, risk scoring) are an overlay
-
-### Open Core Architecture
-
-- **Core Image**: Built from `gerion-cli`. Contains SAST, SCA, Secrets, IaC scanning.
-- **Premium Image**: Built by overlaying `gerion-cli-premium` on top of Core.
-  - Adds **Trace Graphs**, **Deep Reachability Analysis**, **Risk Scoring**.
-  - Premium enrichers are discovered at runtime via Python entry points (`gerion.enrichers` group).
-  - Premium detection: `HAS_PRO` flag in `tools/sast.py` and `tools/parser.py`.
 
 ---
 
@@ -61,23 +50,22 @@ Gerion API Gateway or local files.
 | Git Integration | GitPython | ^3.1.44 |
 | PDF Generation | fpdf2 | ^2.8.5 |
 | Package Manager | Poetry | |
-| Build | PyInstaller (single binary) | |
 
 ### External Security Tools
 
 | Tool | Version | Purpose | Command Pattern | License |
 |------|---------|---------|----------------|---------|
-| Gitleaks | 8.24.2 | Secrets detection | `gitleaks dir <path> --exit-code 0 -f json -r <report>` | MIT |
-| Opengrep | 1.16.0 | SAST (code analysis) | `opengrep scan --config auto --json --output <report> --disable-version-check <path>` | LGPL 2.1 |
-| OSV-Scanner | 2.3.3 | SCA (vuln scanning) | `osv-scanner scan --format json --output <report> -r <path>` | Apache 2.0 |
-| KICS | 2.1.5 | IaC (misconfig scanning) | `kics scan --path <path> --output-path <dir> --report-formats json` | Apache 2.0 |
+| Gitleaks | 8.30.1 | Secrets detection | `gitleaks dir <path> --exit-code 0 -f json -r <report>` | MIT |
+| Opengrep | 1.16.5 | SAST (code analysis) | `opengrep scan --config auto --json --output <report> --disable-version-check <path>` | LGPL 2.1 |
+| OSV-Scanner | 2.3.5 | SCA (vuln scanning) | `osv-scanner scan --format json --output <report> -r <path>` | Apache 2.0 |
+| KICS | 2.1.20 | IaC (misconfig scanning) | `kics scan --path <path> --output-path <dir> --report-formats json` | Apache 2.0 |
 
 ### Tool Selection Rationale
 
 - **Opengrep over Semgrep**: Community fork after Semgrep's Dec 2024 license change. Same rules, same output format. Backed by Endor Labs, Aikido, Orca, Jit. LGPL 2.1. Install via binary only (PyPI package was hijacked).
-- **OSV-Scanner over Trivy SCA**: Native OSV format output — Risk Detector's `mapper.rs` already consumes OSV natively. Broader DB (aggregates NVD, GitHub Advisory, PyPI, npm, Go). Focused SCA-only tool.
+- **OSV-Scanner over Trivy SCA**: Native OSV format output. Broader DB (aggregates NVD, GitHub Advisory, PyPI, npm, Go). Focused SCA-only tool.
 - **KICS over Checkov/Trivy IaC**: Go binary (no Python bloat in Docker image), 2400+ queries, supports 15+ IaC formats (Terraform, K8s, Dockerfile, CloudFormation, Helm, Ansible, OpenAPI, Pulumi). Apache 2.0.
-- **Gitleaks over TruffleHog**: TruffleHog rejected due to AGPL-3.0 risk for an Apache 2.0 Open Core project (subprocess invocation as derivative work is legally gray). detect-secrets (Yelp) rejected as essentially unmaintained.
+- **Gitleaks over TruffleHog**: TruffleHog rejected due to AGPL-3.0 risk for an Apache 2.0 project (subprocess invocation as derivative work is legally gray). detect-secrets (Yelp) rejected as essentially unmaintained.
 
 ---
 
@@ -116,7 +104,7 @@ gerion-cli/
 │   │   ├── secrets.py              # Gitleaks runner
 │   │   ├── sca.py                  # OSV-Scanner SCA runner
 │   │   ├── iac.py                  # KICS IaC runner
-│   │   ├── sast.py                 # Opengrep runner + Premium StructuralEngine hook
+│   │   ├── sast.py                 # Opengrep runner
 │   │   └── parser.py               # Output parsers for all tools + finding template
 │   └── utils/
 │       └── __init__.py             # Empty
@@ -135,8 +123,8 @@ gerion-cli/
 ├── spec/
 │   ├── project_context.md          # This document
 │   └── agent_rules.md              # LLM agent development rules
-├── Dockerfile                      # Multi-stage: tool-builder + kics-builder + cli-builder + final (python:3.13-slim)
-├── Makefile                        # Install targets for Python deps and scanner binaries
+├── Dockerfile                      # Multi-stage: tool-builder + kics-builder + final (python:3.13-slim)
+├── Makefile                        # Install/uninstall targets for Python deps and scanner binaries
 └── pyproject.toml                  # Poetry config
 ```
 
@@ -212,12 +200,6 @@ All findings share this template from `parser.py:generate_finding_template()`:
 | `false_positive` | bool | Always False at creation |
 | `creation_date` | str | ISO timestamp |
 | `last_update_date` | str | ISO timestamp |
-| **Premium Fields** | | |
-| `trace` | dict | Trace graph (nodes/edges) |
-| `reachability` | str | REACHABLE, UNREACHABLE, UNKNOWN |
-| `risk_score` | float | Calculated risk score |
-| `confidence` | str | LOW, MEDIUM, HIGH |
-| `score_breakdown` | dict | Scoring component details |
 
 ### Metadata (raw dict)
 
@@ -246,12 +228,11 @@ CLI (JWT Bearer)  -> GET  /api/v1/findings               -> Fetch for report
 
 ## Docker Image
 
-Four-stage build (`python:3.13-slim-bookworm` base for all stages except kics-builder):
+Three-stage build (`python:3.13-slim-bookworm` base for all stages except kics-builder):
 
 1. **tool-builder**: Downloads Gitleaks, Opengrep, and OSV-Scanner binaries into `/usr/local/bin/`
 2. **kics-builder** (`golang:1.23`): Clones KICS at the pinned version tag, builds with `go build -ldflags="-s -w"`, compresses with UPX
-3. **cli-builder**: Installs Poetry + PyInstaller, strips `gerion_cli/pro/` (Premium code), produces a single `gerion` binary via PyInstaller
-4. **final**: Copies all binaries from the three builder stages; runs as non-root `gerion` user (UID 1000); entrypoint is `gerion`; default CMD is `--help`
+3. **final**: Copies all binaries from the two builder stages, installs the `gerion` CLI via Poetry/PyInstaller; runs as non-root `gerion` user (UID 1000); entrypoint is `gerion`; default CMD is `--help`
 
 Volumes: `/code` (scan target), `/output` (results).
 KICS built-in queries are used (empty `/usr/local/bin/assets/queries` dir is required for KICS startup but the binary falls back to internal rules when empty).
@@ -269,4 +250,3 @@ KICS built-in queries are used (empty `/usr/local/bin/assets/queries` dir is req
 - **Python 3.12+**: Required minimum version
 - **External tools**: Gitleaks, Opengrep, OSV-Scanner, and KICS must be available in PATH
 - **API Gateway**: M2M authentication required for API features
-- **Premium overlay**: Pro features loaded conditionally via entry points; core must work without them
