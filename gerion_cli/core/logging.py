@@ -21,7 +21,7 @@ class LogLevel(str, Enum):
 class GerionLogger:
     def __init__(self, log_level: LogLevel = LogLevel.INFO):
         self.log_level = log_level
-        self.logger = logging.getLogger("gerion-cli")
+        self.logger = logging.getLogger("gerion")
         self.logger.setLevel(getattr(logging, log_level.upper()))
         
         # Remove existing handlers

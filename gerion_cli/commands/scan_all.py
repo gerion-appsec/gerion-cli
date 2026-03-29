@@ -35,16 +35,16 @@ def scan_all(
 
     Examples:
         # Scan current directory with all tools
-        gerion-cli scan-all
+        gerion scan-all
 
         # Scan specific directory
-        gerion-cli scan-all /path/to/code
+        gerion scan-all /path/to/code
 
         # Save all results to a single file
-        gerion-cli scan-all --output-file results.json
+        gerion scan-all --output-file results.json
 
         # Send to API Gateway
-        gerion-cli scan-all --api-url https://api.gerion.com --api-key YOUR_KEY
+        gerion scan-all --api-url https://api.gerion.com --api-key YOUR_KEY
     """
     all_findings = []
     total_duration = 0.0

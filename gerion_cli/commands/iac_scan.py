@@ -23,19 +23,19 @@ def iac_scan(
     
     Examples:
         # Scan current directory
-        gerion-cli iac-scan
+        gerion iac-scan
         
         # Scan specific directory
-        gerion-cli iac-scan /path/to/terraform
+        gerion iac-scan /path/to/terraform
         
         # Scan with custom queries path
-        gerion-cli iac-scan --queries-path /path/to/kics/queries
+        gerion iac-scan --queries-path /path/to/kics/queries
         
         # Save results to file
-        gerion-cli iac-scan --output-file results.json
+        gerion iac-scan --output-file results.json
         
         # Send to API Gateway
-        gerion-cli iac-scan --api-url https://api.gerion.com --api-key YOUR_KEY
+        gerion iac-scan --api-url https://api.gerion.com --api-key YOUR_KEY
     """
     run_scan(
         scan_type="IaC",
