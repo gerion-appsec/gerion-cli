@@ -124,6 +124,8 @@ RUN mkdir -p /usr/local/bin/assets/queries && \
 WORKDIR /code
 ENV PATH="/usr/local/bin:${PATH}"
 ENV FORCE_COLOR=1
+ENV XDG_CACHE_HOME=/tmp/.cache
+ENV HOME=/tmp
 
 USER gerion
 ENTRYPOINT ["gerion"]
