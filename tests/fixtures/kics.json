@@ -23,7 +23,7 @@
 	"start": "2026-02-14T17:18:10.698526716+01:00",
 	"end": "2026-02-14T17:18:10.885186112+01:00",
 	"paths": [
-		"/home/elihu/GIT/GERION/vulnerable-projects/vuln_django_play"
+		"/code/target-project"
 	],
 	"queries": [
 		{

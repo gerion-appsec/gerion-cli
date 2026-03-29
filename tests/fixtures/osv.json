@@ -2,7 +2,7 @@
   "results": [
     {
       "source": {
-        "path": "/home/elihu/GIT/GERION/vulnerable-projects/vuln_django_play/requirements.txt",
+        "path": "/code/target-project/requirements.txt",
         "type": "lockfile"
       },
       "packages": [
