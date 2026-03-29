@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "gerion-cli"
-version = "0.1.0"
+version = "1.0.0"
 description = "A powerful command-line interface for performing security scans on your codebase"
 authors = ["gerion-appsec <info@gerion-appsec.com>"]
 readme = "README.md"
