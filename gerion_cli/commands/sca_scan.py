@@ -23,16 +23,16 @@ def sca_scan(
     
     Examples:
         # Scan current directory
-        gerion-cli sca-scan
+        gerion sca-scan
         
         # Scan specific directory
-        gerion-cli sca-scan /path/to/code
+        gerion sca-scan /path/to/code
         
         # Save results to file
-        gerion-cli sca-scan --output-file results.json
+        gerion sca-scan --output-file results.json
         
         # Send to API Gateway
-        gerion-cli sca-scan --api-url https://api.gerion.com --api-key YOUR_KEY
+        gerion sca-scan --api-url https://api.gerion.com --api-key YOUR_KEY
     """
     run_scan(
         scan_type="SCA",

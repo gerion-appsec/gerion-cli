@@ -14,9 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Define tool versions
-ARG GITLEAKS_VERSION=8.24.2
-ARG OPENGREP_VERSION=v1.16.0
-ARG OSV_SCANNER_VERSION=2.3.3
+ARG GITLEAKS_VERSION=8.30.1
+ARG OPENGREP_VERSION=v1.16.5
+ARG OSV_SCANNER_VERSION=2.3.5
 
 # Download Gitleaks
 RUN curl -sfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
@@ -39,7 +39,7 @@ RUN curl -sfL "https://github.com/google/osv-scanner/releases/download/v${OSV_SC
 # Builds KICS from source (Go) because no standalone binary is released
 # ------------------------------------------------------------------------------
 FROM golang:1.23 AS kics-builder
-ARG KICS_VERSION=v2.1.5
+ARG KICS_VERSION=v2.1.20
 # Use a specific UPX version (latest stable as of Feb 2026)
 ARG UPX_VERSION=4.2.4
 
