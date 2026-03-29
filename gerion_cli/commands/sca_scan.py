@@ -32,7 +32,7 @@ def sca_scan(
         gerion sca-scan --output-file results.json
         
         # Send to API Gateway
-        gerion sca-scan --api-url https://api.gerion.com --api-key YOUR_KEY
+        gerion sca-scan --api-url https://api.gerion.dev --api-key YOUR_KEY
     """
     run_scan(
         scan_type="SCA",

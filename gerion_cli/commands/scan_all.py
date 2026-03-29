@@ -44,7 +44,7 @@ def scan_all(
         gerion scan-all --output-file results.json
 
         # Send to API Gateway
-        gerion scan-all --api-url https://api.gerion.com --api-key YOUR_KEY
+        gerion scan-all --api-url https://api.gerion.dev --api-key YOUR_KEY
     """
     all_findings = []
     total_duration = 0.0

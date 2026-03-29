@@ -31,7 +31,7 @@ def secrets_scan(
         gerion secrets-scan --output-file results.json
         
         # Send to API Gateway
-        gerion secrets-scan --api-url https://api.gerion.com --api-key YOUR_KEY
+        gerion secrets-scan --api-url https://api.gerion.dev --api-key YOUR_KEY
     """
     run_scan(
         scan_type="Secrets",
