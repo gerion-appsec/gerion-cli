@@ -42,10 +42,42 @@ def find_git_repo(path):
     
     return None
 
+def _detect_cicd_platform():
+    """Detect the CI/CD platform from environment variables."""
+    if os.getenv("JENKINS_URL"):
+        return "jenkins"
+    if os.getenv("GITHUB_ACTIONS"):
+        return "github_actions"
+    if os.getenv("GITLAB_CI"):
+        return "gitlab_ci"
+    if os.getenv("CIRCLECI"):
+        return "circleci"
+    if os.getenv("TF_BUILD"):  # Azure DevOps
+        return "azure_devops"
+    if os.getenv("BITBUCKET_BUILD_NUMBER"):
+        return "bitbucket"
+    return "local"
+
+
+def _extract_repo_name_from_url(url: str) -> str:
+    """Extract the repository short name from a remote URL."""
+    if not url:
+        return "local"
+    clean = url[:-4] if url.endswith(".git") else url
+    # Handle SSH (git@host:path/repo) and HTTPS (https://host/path/repo)
+    if clean.startswith("git@"):
+        parts = clean.split(":")
+        path = parts[1] if len(parts) >= 2 else clean
+    else:
+        path = clean
+    segments = [p for p in path.split("/") if p]
+    return segments[-1] if segments else url
+
+
 def get_metadata(code_path=None):
     """
     Get repository metadata from Git or environment variables.
-    
+
     Args:
         code_path: Optional path to the code directory being scanned.
                    If provided, will search for Git repository starting from this path.
@@ -63,14 +95,15 @@ def get_metadata(code_path=None):
     else:
         # Fallback to current working directory
         repo_path = os.getcwd()
-    
+
     metadata = {
         "repository_name": "local",
         "branch_name": "local",
         "build_id": "0",
         "code_path": str(code_path) if code_path else os.path.relpath(os.getcwd()),
         "commit_hash": None,
-        "commit_author": None
+        "commit_author": None,
+        "cicd_platform": _detect_cicd_platform(),
     }
     
     # Try to detect Git repository
@@ -130,13 +163,20 @@ def get_metadata(code_path=None):
         })
 
     if os.getenv("JENKINS_URL"):
+        # Jenkins sets GIT_BRANCH with "origin/" prefix (e.g. "origin/main") — strip it.
+        raw_branch = os.getenv("GIT_BRANCH", "")
+        branch_name = raw_branch[len("origin/"):] if raw_branch.startswith("origin/") else raw_branch
+
+        # Jenkins sets GIT_URL to the full remote URL — extract the short repo name.
+        repo_name = _extract_repo_name_from_url(os.getenv("GIT_URL", "")) or "local"
+
         metadata.update({
-            "repository_name": os.getenv("GIT_URL"),
-            "branch_name": os.getenv("GIT_BRANCH"),
+            "repository_name": repo_name,
+            "branch_name": branch_name,
             "build_id": os.getenv("BUILD_NUMBER"),
             "code_path": os.getenv("WORKSPACE"),
             "commit_hash": os.getenv("GIT_COMMIT"),
-            "commit_author": os.getenv("GIT_COMMITTER_NAME")
+            "commit_author": os.getenv("GIT_COMMITTER_NAME"),
         })
     
     if os.getenv("GITLAB_CI"):
