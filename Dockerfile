@@ -38,7 +38,7 @@ RUN curl -sfL "https://github.com/google/osv-scanner/releases/download/v${OSV_SC
 # Stage 2: kics-builder
 # Builds KICS from source (Go) because no standalone binary is released
 # ------------------------------------------------------------------------------
-FROM golang:1.23 AS kics-builder
+FROM golang:1.25 AS kics-builder
 ARG KICS_VERSION=v2.1.20
 # Use a specific UPX version (latest stable as of Feb 2026)
 ARG UPX_VERSION=4.2.4
@@ -124,6 +124,8 @@ RUN mkdir -p /usr/local/bin/assets/queries && \
 WORKDIR /code
 ENV PATH="/usr/local/bin:${PATH}"
 ENV FORCE_COLOR=1
+ENV XDG_CACHE_HOME=/tmp/.cache
+ENV HOME=/tmp
 
 USER gerion
 ENTRYPOINT ["gerion"]

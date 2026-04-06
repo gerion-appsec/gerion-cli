@@ -89,7 +89,7 @@ def report(
     
     try:
         with console.status("[bold green]Fetching findings..."):
-            with httpx.Client() as client:
+            with httpx.Client(verify=os.environ.get('GERION_CA_BUNDLE', True)) as client:
                 response = client.get(
                     f"{effective_api_url}/api/v1/findings",
                     params=params,
