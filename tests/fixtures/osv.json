@@ -18,6 +18,7 @@
               "aliases": ["CVE-2022-23491"],
               "summary": "Certifi removing TrustCor root certificate",
               "details": "Certifi 2022.12.07 removes root certificates from TrustCor...",
+              "severity": [],
               "affected": [
                 {
                   "package": {
@@ -47,6 +48,10 @@
               "aliases": ["CVE-2023-37920"],
               "summary": "Certifi removes GLOBALTRUST root certificate",
               "details": "Certifi prior to version 2023.07.22 recognized root certificates from GLOBALTRUST...",
+              "severity": [
+                {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"},
+                {"type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"}
+              ],
               "affected": [
                 {
                   "package": {
@@ -84,7 +89,10 @@
               "id": "GHSA-2m34-jcjv-45xf",
               "aliases": ["CVE-2020-13596"],
               "summary": "XSS in Django",
-              "details": "An issue was discovered in Django...",
+              "details": "### Impact\n\nAn issue was discovered in Django that allows XSS via the admin ForeignKeyRawIdWidget.\n\n### Patches\n\nUpgrade to Django 3.0.7.\n\n### Workarounds\n\nNo known workarounds.",
+              "severity": [
+                {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:N"}
+              ],
               "affected": [
                 {
                   "package": {

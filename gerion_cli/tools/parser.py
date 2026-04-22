@@ -2,6 +2,7 @@
 Parsing functionality for security tool outputs.
 """
 import hashlib
+import re
 from datetime import datetime
 
 secrets_severity = 'High'
@@ -194,6 +195,66 @@ def parse_secrets_tool_output(output, metadata):
         
     return results
 
+_GHSA_DESCRIPTION_KEYS = ('impact', 'details', 'summary')
+_GHSA_SKIP_KEYS = {
+    'proof of concept', 'poc', 'reproduction',
+    'timeline', 'patches', 'workarounds', 'references',
+    'for more information', 'credit', 'credits',
+    'remediation', 'suggested fix', 'fix',
+}
+
+def _parse_ghsa_sections(details: str) -> dict:
+    """
+    Parse ## / ### sections from a GHSA advisory details field.
+    Returns dict of {section_title_lower: content} or {} if no sections found.
+    """
+    if not details or not re.search(r'^#{1,4}\s+', details, re.MULTILINE):
+        return {}
+
+    sections = {}
+    current_key = None
+    current_lines = []
+
+    for line in details.split('\n'):
+        m = re.match(r'^#{1,4}\s+(.+)$', line)
+        if m:
+            if current_key is not None:
+                sections[current_key] = '\n'.join(current_lines).strip()
+            current_key = m.group(1).strip().lower()
+            current_lines = []
+        elif current_key is not None:
+            current_lines.append(line)
+
+    if current_key is not None:
+        sections[current_key] = '\n'.join(current_lines).strip()
+
+    return sections
+
+
+def _build_description_from_sections(sections: dict, fallback: str, summary: str) -> str:
+    """
+    Build a clean description from parsed GHSA sections.
+    Priority: impact → details → summary section → fallback details → summary field.
+    Skips PoC, timeline, patches and other non-descriptive sections.
+    """
+    for key in _GHSA_DESCRIPTION_KEYS:
+        content = sections.get(key, '').strip()
+        if content:
+            return content
+    return fallback or summary or ''
+
+
+def _dedup_vuln_details(vuln_details: list) -> list:
+    """Deduplicate per-vuln entries by CVE ID, keeping the most severe entry per ID."""
+    seen: dict = {}
+    for vd in vuln_details:
+        vid = vd['id']
+        if vid not in seen or vd['_rank'] > seen[vid]['_rank']:
+            seen[vid] = vd
+    sorted_entries = sorted(seen.values(), key=lambda x: x['_rank'], reverse=True)
+    return [{k: v for k, v in entry.items() if k != '_rank'} for entry in sorted_entries]
+
+
 def parse_sca_tool_output(output, metadata):
     """
     Parses the output of OSV-Scanner, grouped by package. Each finding represents
@@ -221,6 +282,7 @@ def parse_sca_tool_output(output, metadata):
             max_severity = 'LOW'
             fix_versions = []
             vuln_descriptions = []
+            vuln_details = []
 
             for vuln in vulnerabilities:
                 vuln_id = vuln.get('id', 'unknown')
@@ -243,8 +305,26 @@ def parse_sca_tool_output(output, metadata):
 
                 summary = vuln.get('summary')
                 details = vuln.get('details')
-                desc = details if details else (summary if summary else f"Vulnerability {vuln_id} in {pkg_name}")
+
+                sections = _parse_ghsa_sections(details)
+                if sections:
+                    desc = _build_description_from_sections(sections, details, summary)
+                else:
+                    desc = details or summary or f"Vulnerability {vuln_id} in {pkg_name}"
                 vuln_descriptions.append((severity, desc))
+
+                cvss = next(
+                    (s['score'] for s in vuln.get('severity', []) if s.get('type') == 'CVSS_V3'),
+                    next((s['score'] for s in vuln.get('severity', [])), None)
+                )
+                vuln_details.append({
+                    'id': cve,
+                    'severity': severity,
+                    'summary': summary or f"Vulnerability {vuln_id} in {pkg_name}",
+                    'fixed': fixed,
+                    'cvss': cvss,
+                    '_rank': SEVERITY_RANK.get(severity, 0),
+                })
 
             component_fix = None
             if fix_versions:
@@ -305,6 +385,7 @@ def parse_sca_tool_output(output, metadata):
                 'component_fix': component_fix,
                 'cwe': sorted(cwe_set),
                 'cve': cve_list,
+                'vuln_details': _dedup_vuln_details(vuln_details),
             }
 
             final_finding = {**template, **result}
