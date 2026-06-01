@@ -15,11 +15,10 @@
           "vulnerabilities": [
             {
               "id": "GHSA-43fp-rhv2-5gv8",
-              "aliases": [
-                "CVE-2022-23491"
-              ],
+              "aliases": ["CVE-2022-23491"],
               "summary": "Certifi removing TrustCor root certificate",
               "details": "Certifi 2022.12.07 removes root certificates from TrustCor...",
+              "severity": [],
               "affected": [
                 {
                   "package": {
@@ -31,25 +30,50 @@
                     {
                       "type": "ECOSYSTEM",
                       "events": [
-                        {
-                          "introduced": "2017.11.05"
-                        },
-                        {
-                          "fixed": "2022.12.07"
-                        }
+                        {"introduced": "2017.11.05"},
+                        {"fixed": "2022.12.07"}
                       ]
                     }
                   ],
-                  "database_specific": {
-                    "source": "https://github.com/..."
-                  }
+                  "database_specific": {}
                 }
               ],
               "database_specific": {
-                "cwe_ids": [
-                  "CWE-345"
-                ],
+                "cwe_ids": ["CWE-345"],
                 "severity": "MODERATE"
+              }
+            },
+            {
+              "id": "GHSA-xqr8-7jwr-rhp7",
+              "aliases": ["CVE-2023-37920"],
+              "summary": "Certifi removes GLOBALTRUST root certificate",
+              "details": "Certifi prior to version 2023.07.22 recognized root certificates from GLOBALTRUST...",
+              "severity": [
+                {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"},
+                {"type": "CVSS_V4", "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N"}
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "certifi",
+                    "purl": "pkg:pypi/certifi"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {"introduced": "2021.05.30"},
+                        {"fixed": "2023.07.22"}
+                      ]
+                    }
+                  ],
+                  "database_specific": {}
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": ["CWE-345"],
+                "severity": "HIGH"
               }
             }
           ]
@@ -63,32 +87,33 @@
           "vulnerabilities": [
             {
               "id": "GHSA-2m34-jcjv-45xf",
-              "aliases": [
-                "CVE-2020-13596"
-              ],
+              "aliases": ["CVE-2020-13596"],
               "summary": "XSS in Django",
-              "details": "An issue was discovered in Django...",
+              "details": "### Impact\n\nAn issue was discovered in Django that allows XSS via the admin ForeignKeyRawIdWidget.\n\n### Patches\n\nUpgrade to Django 3.0.7.\n\n### Workarounds\n\nNo known workarounds.",
+              "severity": [
+                {"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:C/C:L/I:L/A:N"}
+              ],
               "affected": [
                 {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "django",
+                    "purl": "pkg:pypi/django"
+                  },
                   "ranges": [
                     {
                       "type": "ECOSYSTEM",
                       "events": [
-                        {
-                          "introduced": "3.0a1"
-                        },
-                        {
-                          "fixed": "3.0.7"
-                        }
+                        {"introduced": "3.0a1"},
+                        {"fixed": "3.0.7"}
                       ]
                     }
-                  ]
+                  ],
+                  "database_specific": {}
                 }
               ],
               "database_specific": {
-                "cwe_ids": [
-                  "CWE-79"
-                ],
+                "cwe_ids": ["CWE-79"],
                 "severity": "MODERATE"
               }
             }

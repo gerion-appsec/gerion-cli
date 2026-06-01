@@ -3,6 +3,7 @@ Authentication functionality for Gerion API.
 Uses M2M API key authentication to get JWT tokens from API Gateway.
 """
 import json
+import os
 import httpx
 from gerion_cli.core.types import SecretString
 from gerion_cli.core.logging import debug, info, error
@@ -28,7 +29,8 @@ def authenticate_with_api(api_url: str, client_id: str, api_key: SecretString):
     try:
         debug(f"Authenticating with M2M API key at: {auth_url}")
         debug(f"Client ID: {client_id}")
-        response = httpx.post(auth_url, json=auth_data, headers=headers, follow_redirects=True)
+        ssl_verify = os.environ.get('GERION_CA_BUNDLE', True)
+        response = httpx.post(auth_url, json=auth_data, headers=headers, follow_redirects=True, verify=ssl_verify)
         
         debug(f"Response status: {response.status_code}")
         

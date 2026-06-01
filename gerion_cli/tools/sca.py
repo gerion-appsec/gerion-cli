@@ -63,4 +63,4 @@ def run_sca_tool(code_path, timeout=180):
     finally:
         if os.path.exists(report_path):
             try: os.remove(report_path)
-            except: pass 
+            except OSError: pass

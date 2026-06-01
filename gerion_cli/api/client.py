@@ -1,6 +1,7 @@
 """
 HTTP client functionality for Gerion API.
 """
+import os
 import httpx
 from gerion_cli.core.types import SecretString
 from gerion_cli.core.logging import debug, error, success
@@ -48,7 +49,8 @@ def send_to_api(results, api_url: str, client_id: str, api_key: SecretString):
 
     try:
         debug("Sending findings to API Gateway...")
-        response = httpx.post(findings_url, headers=headers, json=api_data, follow_redirects=True)
+        ssl_verify = os.environ.get('GERION_CA_BUNDLE', True)
+        response = httpx.post(findings_url, headers=headers, json=api_data, follow_redirects=True, verify=ssl_verify)
 
         if response.status_code >= 200 and response.status_code < 300:
             success("Data sent to API Gateway successfully.")
