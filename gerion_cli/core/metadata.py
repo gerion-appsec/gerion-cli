@@ -134,7 +134,7 @@ def get_metadata(code_path=None):
                     parts = [part for part in clean_url.split('/') if part]
                     if parts:
                         repo_name = parts[-1]
-        except:
+        except Exception:
             repo_name = os.path.basename(repo.working_dir)
         
         # Use the code_path if provided, otherwise use repo working dir

@@ -89,4 +89,4 @@ def run_iac_tool(code_path, timeout=180, queries_path=None):
     finally:
         if os.path.exists(report_path):
             try: os.remove(report_path)
-            except: pass 
+            except OSError: pass
