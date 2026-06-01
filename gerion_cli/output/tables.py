@@ -127,20 +127,19 @@ def findings_table(findings: List[Dict], scan_type: str = "Security"):
                 finding.get('mitigation', 'N/A')[:40]  # Show first 40 chars of mitigation/status
             )
     else:  # SCA
-        # Check if any finding has reachability
         has_premium = any(f.get('reachability') for f in findings)
-        
+
         table.add_column("Severity", style="bold")
         if has_premium:
             table.add_column("Risk Score", style="bold magenta")
             table.add_column("Reachability", style="bold yellow")
-        table.add_column("CVE", style="bold")
+        table.add_column("CVEs", style="bold")
         table.add_column("Component", style="cyan")
+        table.add_column("Fix", style="green")
         table.add_column("File", style="cyan")
-        
+
         for finding in sorted_findings:
             severity = finding.get('severity', 'Info')
-            # Normalize severity for consistent display
             severity_normalized = severity.capitalize()
             severity_color = {
                 'Critical': 'bright_black',
@@ -149,9 +148,22 @@ def findings_table(findings: List[Dict], scan_type: str = "Security"):
                 'Low': 'green',
                 'Info': 'blue'
             }.get(severity_normalized, 'white')
-            
+
             component = f"{finding.get('component_name', 'N/A')} {finding.get('component_version', '')}"
-            
+
+            cve_value = finding.get('cve', [])
+            if isinstance(cve_value, list):
+                if len(cve_value) == 0:
+                    cve_display = 'N/A'
+                elif len(cve_value) == 1:
+                    cve_display = cve_value[0]
+                else:
+                    cve_display = f"{cve_value[0]} +{len(cve_value) - 1}"
+            else:
+                cve_display = str(cve_value) if cve_value else 'N/A'
+
+            fix_display = finding.get('component_fix') or 'No fix'
+
             row = [
                 f"[{severity_color}]{severity_normalized}[/{severity_color}]"
             ]
@@ -159,13 +171,14 @@ def findings_table(findings: List[Dict], scan_type: str = "Security"):
                 risk_score = str(finding.get('risk_score') or 'N/A')
                 reachability = str(finding.get('reachability') or 'N/A')
                 row.extend([risk_score, reachability])
-            
+
             row.extend([
-                finding.get('cve', 'N/A'),
+                cve_display,
                 component,
+                fix_display,
                 finding.get('file_path', 'N/A')
             ])
-            
+
             table.add_row(*row)
     
     console.print(table) 
