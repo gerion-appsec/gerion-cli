@@ -91,7 +91,7 @@ def report(
         with console.status("[bold green]Fetching findings..."):
             with httpx.Client(verify=os.environ.get('GERION_CA_BUNDLE', True)) as client:
                 response = client.get(
-                    f"{effective_api_url}/api/v1/findings",
+                    f"{effective_api_url}/api/v1/reporting/findings",
                     params=params,
                     headers={"Authorization": f"Bearer {jwt_token}"},
                     timeout=30.0
@@ -187,10 +187,11 @@ def display_text_report(findings, repo, branch, include_description, include_mit
         ])
         
         table.add_row(*row_data)
+        n_prefix = len(row_data) - 2
         if include_description and f.get("description"):
-            table.add_row("", "", "", f"[dim]{f.get('description')}[/dim]", "")
+            table.add_row(*[""] * n_prefix, f"[dim]{f.get('description')}[/dim]", "")
         if include_mitigation and f.get("mitigation"):
-            table.add_row("", "", "", f"[green]Mitigation: {f.get('mitigation')}[/green]", "")
+            table.add_row(*[""] * n_prefix, f"[green]Mitigation: {f.get('mitigation')}[/green]", "")
     
     console.print(table)
     info(f"Total Findings: {len(findings)}")
@@ -236,6 +237,83 @@ def generate_markdown_report(findings, repo, branch, include_description, includ
     return "\n".join(lines)
 
 def generate_pdf_report(findings, repo, branch, output_path, include_description, include_mitigation, active_only):
+    import os
+
+    def find_system_fonts():
+        families = [
+            {
+                "name": "LiberationSans",
+                "regular": "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                "bold": "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "italic": "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf",
+                "bold_italic": "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
+            },
+            {
+                "name": "DejaVuSans",
+                "regular": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "bold": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "italic": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf",
+                "bold_italic": "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+            },
+            {
+                "name": "ArialUnicode",
+                "regular": "/Library/Fonts/Arial.ttf",
+                "bold": "/Library/Fonts/Arial Bold.ttf",
+                "italic": "/Library/Fonts/Arial Italic.ttf",
+                "bold_italic": "/Library/Fonts/Arial Bold Italic.ttf",
+            },
+            {
+                "name": "ArialUnicodeSupplemental",
+                "regular": "/System/Library/Fonts/Supplemental/Arial.ttf",
+                "bold": "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+                "italic": "/System/Library/Fonts/Supplemental/Arial Italic.ttf",
+                "bold_italic": "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf",
+            },
+            {
+                "name": "ArialWindows",
+                "regular": "C:\\Windows\\Fonts\\arial.ttf",
+                "bold": "C:\\Windows\\Fonts\\arialbd.ttf",
+                "italic": "C:\\Windows\\Fonts\\ariali.ttf",
+                "bold_italic": "C:\\Windows\\Fonts\\arialbi.ttf",
+            }
+        ]
+        for family in families:
+            if (os.path.exists(family["regular"]) and 
+                os.path.exists(family["bold"]) and 
+                os.path.exists(family["italic"]) and 
+                os.path.exists(family["bold_italic"])):
+                return family
+        return None
+
+    system_font_family = find_system_fonts()
+    font_family = "custom_sans" if system_font_family else "helvetica"
+
+    def sanitize_latin1(text: str) -> str:
+        if not text:
+            return ""
+        # If we are using core Helvetica, we must sanitize to Latin-1
+        if font_family == "helvetica":
+            replacements = {
+                "\u2014": "-",   # em dash
+                "\u2013": "-",   # en dash
+                "\u2018": "'",   # left single quote
+                "\u2019": "'",   # right single quote
+                "\u201c": '"',   # left double quote
+                "\u201d": '"',   # right double quote
+                "\u2022": "*",   # bullet
+                "\u2026": "...", # ellipsis
+                "\u20ac": "EUR", # euro symbol
+                "\u00a0": " ",   # non-breaking space
+            }
+            for orig, rep in replacements.items():
+                text = text.replace(orig, rep)
+            return text.encode("latin-1", errors="ignore").decode("latin-1")
+        # Unicode-capable fonts do not require sanitization
+        return text
+
+    repo = sanitize_latin1(repo)
+    branch = sanitize_latin1(branch)
+
     if not output_path:
         output_path = f"report_{repo}_{branch}_{datetime.now().strftime('%Y%m%d')}.pdf"
     
@@ -251,20 +329,40 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
             stats[sev] = stats.get(sev, 0) + 1
 
         class GerionPDF(FPDF):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                if font_family == "custom_sans":
+                    self.add_font("custom_sans", style="", fname=system_font_family["regular"])
+                    self.add_font("custom_sans", style="B", fname=system_font_family["bold"])
+                    self.add_font("custom_sans", style="I", fname=system_font_family["italic"])
+                    self.add_font("custom_sans", style="BI", fname=system_font_family["bold_italic"])
+
+            def set_font(self, family_name, style="", size=0):
+                if family_name.lower() == "helvetica" and font_family == "custom_sans" and "custom_sans" in self.fonts:
+                    family_name = "custom_sans"
+                super().set_font(family_name, style, size)
+
             def header(self):
-                # Only on pages other than first? No, consistent header is fine
-                self.set_font('helvetica', 'B', 24)
-                self.set_text_color(0, 119, 190) # Gerion Blue
-                self.cell(0, 15, 'GERION Security Report', border=0, ln=1, align='L')
-                self.set_draw_color(0, 119, 190)
+                # Check if logo path exists and draw it
+                logo_path = os.environ.get("GERION_LOGO_PATH", "")
+                if os.path.exists(logo_path):
+                    self.image(logo_path, x=10, y=9, w=13)
+                    self.set_xy(26, 11)
+                else:
+                    self.set_xy(10, 11)
+                
+                self.set_font('helvetica', 'B', 22)
+                self.set_text_color(21, 87, 121) # Gerion Dark Blue (#155779)
+                self.cell(0, 10, 'GERION Security Report', border=0, ln=1, align='L')
+                self.set_draw_color(21, 87, 121)
                 self.set_line_width(0.5)
-                self.line(10, 27, 200, 27)
-                self.ln(12)
+                self.line(10, 26, 200, 26)
+                self.ln(8)
 
             def footer(self):
                 self.set_y(-15)
                 self.set_font('helvetica', 'I', 8)
-                self.set_text_color(150)
+                self.set_text_color(148, 163, 184) # Slate-400
                 self.cell(0, 10, f'Generated by Gerion Security - Page {self.page_no()}/{{nb}}', 0, 0, 'C')
 
         pdf = GerionPDF()
@@ -272,203 +370,231 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
         pdf.add_page()
         
         # 1. Report Metadata
-        pdf.set_fill_color(248, 249, 250)
-        pdf.set_draw_color(222, 226, 230)
-        pdf.set_font('helvetica', 'B', 12)
-        pdf.set_text_color(33, 37, 41)
-        pdf.cell(0, 10, ' Project Information', ln=1, fill=True, border='B')
+        pdf.set_fill_color(248, 250, 252) # Slate-50
+        pdf.set_draw_color(226, 232, 240) # Slate-200
+        pdf.set_font('helvetica', 'B', 11)
+        pdf.set_text_color(30, 41, 59) # Slate-800
+        pdf.cell(0, 9, ' Project Information', ln=1, fill=True, border='B')
         
-        pdf.set_font('helvetica', '', 10)
-        pdf.ln(2)
+        pdf.set_font('helvetica', '', 9)
+        pdf.ln(1)
         col_width = 40
-        pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(col_width, 7, ' Repository:', 0, 0)
-        pdf.set_font('helvetica', '', 10)
-        pdf.cell(0, 7, repo, 0, 1)
         
-        pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(col_width, 7, ' Branch:', 0, 0)
-        pdf.set_font('helvetica', '', 10)
-        pdf.cell(0, 7, branch, 0, 1)
+        pdf.set_font('helvetica', 'B', 9)
+        pdf.set_text_color(71, 85, 105) # Slate-600
+        pdf.cell(col_width, 6, ' Repository:', 0, 0)
+        pdf.set_font('helvetica', '', 9)
+        pdf.set_text_color(51, 65, 85) # Slate-700
+        pdf.cell(0, 6, repo, 0, 1)
         
-        pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(col_width, 7, ' Execution Date:', 0, 0)
-        pdf.set_font('helvetica', '', 10)
-        pdf.cell(0, 7, datetime.now().strftime("%B %d, %Y %H:%M:%S"), 0, 1)
+        pdf.set_font('helvetica', 'B', 9)
+        pdf.set_text_color(71, 85, 105)
+        pdf.cell(col_width, 6, ' Branch:', 0, 0)
+        pdf.set_font('helvetica', '', 9)
+        pdf.set_text_color(51, 65, 85)
+        pdf.cell(0, 6, branch, 0, 1)
         
-        pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(col_width, 7, ' Report Scope:', 0, 0)
-        pdf.set_font('helvetica', '', 10)
+        pdf.set_font('helvetica', 'B', 9)
+        pdf.set_text_color(71, 85, 105)
+        pdf.cell(col_width, 6, ' Execution Date:', 0, 0)
+        pdf.set_font('helvetica', '', 9)
+        pdf.set_text_color(51, 65, 85)
+        pdf.cell(0, 6, datetime.now().strftime("%B %d, %Y %H:%M:%S"), 0, 1)
+        
+        pdf.set_font('helvetica', 'B', 9)
+        pdf.set_text_color(71, 85, 105)
+        pdf.cell(col_width, 6, ' Report Scope:', 0, 0)
+        pdf.set_font('helvetica', '', 9)
+        pdf.set_text_color(51, 65, 85)
         scope = "Active Findings Only" if active_only else "All Findings (incl. Mitigated/FP)"
-        pdf.cell(0, 7, scope, 0, 1)
-        pdf.ln(10)
+        pdf.cell(0, 6, scope, 0, 1)
+        pdf.ln(8)
 
-        # 2. Executive Summary (Parity with Frontend)
-        pdf.set_font('helvetica', 'B', 12)
-        pdf.cell(0, 10, ' Findings Summary', ln=1, fill=True, border='B')
-        pdf.ln(5)
+        # 2. Executive Summary
+        pdf.set_fill_color(248, 250, 252)
+        pdf.set_draw_color(226, 232, 240)
+        pdf.set_font('helvetica', 'B', 11)
+        pdf.set_text_color(30, 41, 59)
+        pdf.cell(0, 9, ' Findings Summary', ln=1, fill=True, border='B')
+        pdf.ln(4)
         
         # Grid for summary boxes
-        pdf.set_font('helvetica', 'B', 9)
-        spacing = 5
+        spacing = 4
         box_width = (pdf.w - 20 - (spacing * 5)) / 6
         
         # Define colors for boxes
         sev_colors = {
-            "CRITICAL": (33, 37, 41), # Dark
+            "CRITICAL": (15, 23, 42), # Dark Slate (900)
             "HIGH": (220, 53, 69),    # Red
-            "MEDIUM": (253, 126, 20), # Orange
-            "LOW": (13, 110, 253),    # Blue
-            "INFO": (108, 117, 125),  # Gray
-            "UNKNOWN": (200, 200, 200)     # Light Gray
+            "MEDIUM": (249, 115, 22), # Orange (500)
+            "LOW": (59, 130, 246),    # Blue (500)
+            "INFO": (100, 116, 139),  # Gray (500)
+            "UNKNOWN": (203, 213, 225) # Slate (300)
         }
         
-        current_x = pdf.get_x()
         for sev, count in stats.items():
-            if sev == "UNKNOWN": continue # Combine or skip
+            if sev == "UNKNOWN": continue
             
             pdf.set_fill_color(*sev_colors.get(sev, (200, 200, 200)))
             pdf.set_text_color(255)
             
-            # Draw box
-            # Save current position
             x, y = pdf.get_x(), pdf.get_y()
             
-            # Draw background and border
-            pdf.cell(box_width, 15, "", border=1, ln=0, fill=True)
+            pdf.set_draw_color(226, 232, 240)
+            pdf.cell(box_width, 14, "", border=1, ln=0, fill=True)
             
-            # Reset pointer to start of box for text
             pdf.set_xy(x, y)
             
-            # Draw text lines centered
             pdf.set_font('helvetica', 'B', 10)
-            # Center vertically: (15 - 8) / 2 approx top padding? No, multi_cell starts at top.
-            # Lets just do two cells manually for control
             pdf.cell(box_width, 7, str(count), border=0, ln=2, align='C')
-            pdf.set_font('helvetica', 'B', 7)
-            pdf.cell(box_width, 6, sev, border=0, ln=0, align='C')
+            pdf.set_font('helvetica', 'B', 6.5)
+            pdf.cell(box_width, 5, sev, border=0, ln=0, align='C')
             
-            # Move to next box position
             pdf.set_xy(x + box_width + spacing, y)
         
-        pdf.ln(25)
+        pdf.ln(20)
 
         # 3. Detailed Findings List
-        pdf.set_font('helvetica', 'B', 12)
-        pdf.set_text_color(0)
-        pdf.cell(0, 10, ' Detailed Analysis', ln=1, fill=True, border='B')
-        pdf.ln(5)
+        pdf.set_fill_color(248, 250, 252)
+        pdf.set_draw_color(226, 232, 240)
+        pdf.set_font('helvetica', 'B', 11)
+        pdf.set_text_color(30, 41, 59)
+        pdf.cell(0, 9, ' Detailed Analysis', ln=1, fill=True, border='B')
+        pdf.ln(4)
+
+        pdf.set_draw_color(226, 232, 240) # soft border
 
         for i, f in enumerate(findings, 1):
-            # Check for page break
-            if pdf.get_y() > 240:
-                pdf.add_page()
-            
             status = f.get("status", "Active")
             sev = f.get("severity", "UNKNOWN").upper()
-            stype = f.get("scan_type", "N/A")
-            title = f.get("title", "N/A")
+            stype = sanitize_latin1(f.get("scan_type", "N/A"))
+            title = sanitize_latin1(f.get("title", "N/A"))
             fid = f.get("finding_id", "N/A")
-            location = f"{f.get('file_path', 'N/A')}:{f.get('line_number', '')}"
+            location = sanitize_latin1(f"{f.get('file_path', 'N/A')}:{f.get('line_number', '')}")
             
+            import textwrap
+            
+            loc_lines = textwrap.wrap(location, width=75, break_long_words=True)
+            if not loc_lines: loc_lines = [""]
+            
+            desc_lines = []
+            if include_description and f.get("description"):
+                desc_text = sanitize_latin1(f.get("description") or "")
+                for block in desc_text.splitlines():
+                    if not block.strip():
+                        desc_lines.append("")
+                    else:
+                        desc_lines.extend(textwrap.wrap(block, width=75, break_long_words=True))
+                        
+            mit_lines = []
+            if include_mitigation and f.get("mitigation"):
+                mit_text = sanitize_latin1(f.get("mitigation") or "")
+                for block in mit_text.splitlines():
+                    if not block.strip():
+                        mit_lines.append("")
+                    else:
+                        mit_lines.extend(textwrap.wrap(block, width=75, break_long_words=True))
+            
+            # Height calculation
+            card_height = 8 + 7  # Header + Metadata row
+            card_height += len(loc_lines) * 5 + 1
+            if desc_lines:
+                card_height += len(desc_lines) * 5
+            if mit_lines:
+                card_height += len(mit_lines) * 5
+            card_height += 5  # closing line + spacing
+            
+            # Page Break check (if it doesn't fit on page, trigger page break)
+            page_top_y = 29.0
+            page_bottom_y = 275.0
+            max_usable_height = page_bottom_y - page_top_y  # 246.0 mm
+
+            if pdf.get_y() > page_top_y + 1:
+                if card_height <= max_usable_height:
+                    if pdf.get_y() + card_height > page_bottom_y:
+                        pdf.add_page()
+                else:
+                    if page_bottom_y - pdf.get_y() < 50:
+                        pdf.add_page()
+                
             # Header of the finding box
-            pdf.set_fill_color(240, 240, 240)
-            pdf.set_font('helvetica', 'B', 10)
-            pdf.set_text_color(0, 119, 190)
+            pdf.set_fill_color(248, 250, 252) # Soft Slate-50
+            pdf.set_font('helvetica', 'B', 9.5)
+            pdf.set_text_color(30, 41, 59) # Slate-800
             pdf.cell(0, 8, f" Finding #{i}: {title}", ln=1, fill=True, border='TLR')
             
             # Metadata row inside the box
-            pdf.set_text_color(0)
+            pdf.set_text_color(71, 85, 105) # Slate-600
             pdf.set_font('helvetica', 'B', 8)
             pdf.cell(30, 7, " Severity:", 'L', 0)
             
             # Severity Indicator
             pdf.set_fill_color(*sev_colors.get(sev, (200, 200, 200)))
             pdf.set_text_color(255)
-            pdf.cell(20, 5, sev, border=0, ln=0, align='C', fill=True)
+            pdf.cell(20, 5, f" {sev} ", border=0, ln=0, align='C', fill=True)
             
-            pdf.set_text_color(0)
+            pdf.set_text_color(71, 85, 105)
             pdf.cell(20, 7, "   Type:", 0, 0)
             pdf.set_font('helvetica', '', 8)
+            pdf.set_text_color(51, 65, 85) # Slate-700
             pdf.cell(30, 7, stype, 0, 0)
             
             if not active_only:
                 pdf.set_font('helvetica', 'B', 8)
+                pdf.set_text_color(71, 85, 105)
                 pdf.cell(20, 7, "  Status:", 0, 0)
                 pdf.set_font('helvetica', '', 8)
-                s_color = (40, 167, 69) if status == "Active" else (255, 193, 7) if status == "Mitigated" else (23, 162, 184)
+                s_color = (34, 197, 94) if status == "Active" else (234, 179, 8) if status == "Mitigated" else (100, 116, 139)
                 pdf.set_text_color(*s_color)
                 pdf.cell(25, 7, status, 'R', 1)
-                pdf.set_text_color(0)
+                pdf.set_text_color(51, 65, 85)
             else:
                 pdf.cell(0, 7, "", 'R', 1)
 
             # Location row
-            import textwrap
-            
-            loc_text = location
-            # Safe width 75 chars
-            loc_lines = textwrap.wrap(loc_text, width=75, break_long_words=True, replace_whitespace=False)
-            if not loc_lines: loc_lines = [""]
-            
             pdf.set_font('helvetica', 'B', 8)
-            pdf.cell(30, 7, " Location:", 'L', 0)
+            pdf.set_text_color(71, 85, 105)
+            pdf.cell(30, 6, " Location:", 'L', 0)
             
-            pdf.set_font('helvetica', '', 7)
-            pdf.cell(0, 7, loc_lines[0], 'R', 1)
+            pdf.set_font('helvetica', '', 7.5)
+            pdf.set_text_color(51, 65, 85)
+            pdf.cell(0, 6, loc_lines[0], 'R', 1)
             
             for line in loc_lines[1:]:
                 pdf.cell(30, 5, "", 'L', 0)
                 pdf.cell(0, 5, line, 'R', 1)
             
-            # Explicit cursor reset for safety
             pdf.set_x(pdf.l_margin)
             
-            # Description & Mitigation
-            import textwrap
-            
-            if include_description and f.get("description"):
-                desc_text = f.get("description") or ""
-                # Wrap text to list of lines. 
-                # Width 75 chars approx 150mm. + 30mm label = 180mm. Page width 190mm. Safe.
-                desc_lines = textwrap.wrap(desc_text, width=75, break_long_words=True, replace_whitespace=False)
-                
-                if not desc_lines: desc_lines = [""]
-                
-                # Line 1: Label + Content
+            if include_description and desc_lines:
                 pdf.set_font('helvetica', 'B', 8)
+                pdf.set_text_color(71, 85, 105)
                 pdf.cell(30, 5, " Description:", 'L', 0)
                 
                 pdf.set_font('helvetica', '', 8)
+                pdf.set_text_color(51, 65, 85)
                 pdf.cell(0, 5, desc_lines[0], 'R', 1)
                 
-                # Subsequent lines
                 for line in desc_lines[1:]:
                     pdf.cell(30, 5, "", 'L', 0)
                     pdf.cell(0, 5, line, 'R', 1)
                 
-            if include_mitigation and f.get("mitigation"):
-                mit_text = f.get("mitigation") or ""
-                mit_lines = textwrap.wrap(mit_text, width=75, break_long_words=True, replace_whitespace=False)
+            if include_mitigation and mit_lines:
+                # Soft green background for remediation note box
+                pdf.set_fill_color(240, 253, 244) # Emerald-50
+                pdf.set_text_color(21, 128, 61) # Emerald-700
                 
-                if not mit_lines: mit_lines = [""]
-                
-                pdf.set_fill_color(232, 245, 233)
-                pdf.set_text_color(27, 94, 32)
-                
-                # Line 1
                 pdf.set_font('helvetica', 'B', 8)
                 pdf.cell(30, 5, " Remediation:", 'L', 0, fill=True)
                 
                 pdf.set_font('helvetica', 'I', 8)
                 pdf.cell(0, 5, mit_lines[0], 'R', 1, fill=True)
                 
-                # Subsequent lines
                 for line in mit_lines[1:]:
                     pdf.cell(30, 5, "", 'L', 0, fill=True)
                     pdf.cell(0, 5, line, 'R', 1, fill=True)
                     
-                pdf.set_text_color(0)
+                pdf.set_text_color(51, 65, 85)
             
             # Close the finding box
             pdf.cell(0, 2, "", 'T', 1) 

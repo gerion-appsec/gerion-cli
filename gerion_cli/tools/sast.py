@@ -55,6 +55,6 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
     finally:
         if os.path.exists(report_path):
             try: os.remove(report_path)
-            except: pass
+            except OSError: pass
 
     return results
