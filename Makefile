@@ -99,8 +99,8 @@ install-osv-scanner:
 	fi
 
 install-kics:
-	@if $(BIN_DIR)/kics version 2>&1 | grep -qF "$(KICS_VERSION)"; then \
-	    echo "  ✓ kics v$(KICS_VERSION) already installed, skipping"; \
+	@if [ -x "$(BIN_DIR)/kics" ] && $(BIN_DIR)/kics version 2>&1 | grep -qF "$(KICS_VERSION)" && [ -d "$(BIN_DIR)/assets/queries" ] && [ "$$(ls -A $(BIN_DIR)/assets/queries)" ]; then \
+	    echo "  ✓ kics v$(KICS_VERSION) and queries already installed, skipping"; \
 	else \
 	    if ! command -v go >/dev/null 2>&1; then \
 	        echo "  ✗ KICS must be built from source but Go is not installed."; \
@@ -119,9 +119,12 @@ install-kics:
 	    cd /tmp/kics-src && go build -o $(BIN_DIR)/kics \
 	        -ldflags="-s -w -X github.com/Checkmarx/kics/v2/internal/constants.Version=$(KICS_VERSION)" \
 	        ./cmd/console || { echo "  ✗ Build failed"; exit 1; }; \
+	    mkdir -p $(BIN_DIR)/assets; \
+	    cp -r /tmp/kics-src/assets/queries $(BIN_DIR)/assets/queries; \
 	    rm -rf /tmp/kics-src; \
 	    echo "  ✓ kics → $(BIN_DIR)/kics"; \
 	fi
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Verify all tools are available
@@ -153,6 +156,7 @@ uninstall-osv-scanner:
 
 uninstall-kics:
 	@rm -f $(BIN_DIR)/kics
+	@rm -rf $(BIN_DIR)/assets/queries
 	@echo "  ✓ kics removed"
 
 clean: uninstall

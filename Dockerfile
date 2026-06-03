@@ -115,10 +115,11 @@ COPY --from=tool-builder \
 COPY --from=kics-builder /usr/local/bin/kics /usr/local/bin/
 COPY --from=cli-builder /usr/local/bin/gerion /usr/local/bin/
 
-# KICS requires the queries directory to exist (uses embedded rules but validates the path)
+# Copy KICS queries
+COPY --from=kics-builder /build/assets/queries /usr/local/bin/assets/queries
+
 # User Setup
-RUN mkdir -p /usr/local/bin/assets/queries && \
-    groupadd -r gerion && useradd -r -g gerion -d /home/gerion -m gerion && \
+RUN groupadd -r gerion && useradd -r -g gerion -d /home/gerion -m gerion && \
     mkdir -p /code /output && chown -R gerion:gerion /code /output
 
 WORKDIR /code
