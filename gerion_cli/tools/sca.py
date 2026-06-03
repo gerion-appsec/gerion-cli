@@ -24,6 +24,7 @@ def run_sca_tool(code_path, timeout=180):
     # Usage: osv-scanner scan --format json --output <file> <path>
     command = [
         "osv-scanner", "scan",
+        "--no-resolve",
         "--format", "json",
         "--output", report_path,
         "-r", # Recursive scan

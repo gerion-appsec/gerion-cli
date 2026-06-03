@@ -264,8 +264,18 @@ def parse_sca_tool_output(output, metadata):
     results = []
     seen_finding_ids = set()
 
+    import os as _os
+    repo_root = metadata.get('code_path', '')
+
     for result_item in output:
         source_path = result_item.get('source', {}).get('path', 'unknown')
+        if repo_root and source_path and source_path != 'unknown':
+            try:
+                rel = _os.path.relpath(source_path, repo_root)
+                if not rel.startswith('..'):
+                    source_path = rel
+            except ValueError:
+                pass
 
         for pkg_wrapper in result_item.get('packages', []):
             pkg = pkg_wrapper.get('package', {})
