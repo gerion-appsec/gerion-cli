@@ -105,6 +105,8 @@ Each scan command accepts the same core set of options:
 
 The IaC scan additionally accepts `--queries-path` to specify a custom KICS queries directory.
 
+The SCA scan uses OSV-Scanner with the `--no-resolve` flag. This disables dynamic/estimated dependency resolution for open manifests (like `requirements.txt`) to prevent false positives caused by resolving to the minimum compatible versions of transitive dependencies. For projects utilizing lockfiles (such as `poetry.lock`, `package-lock.json`, etc.), transitive dependencies are still fully analyzed since they are already explicitly declared in the lockfile.
+
 ### Output routing
 
 When a scan completes, output is dispatched according to this priority:
