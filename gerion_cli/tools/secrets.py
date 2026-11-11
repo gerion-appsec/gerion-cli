@@ -1,36 +1,19 @@
 """
 Secrets detection tool integration.
 """
-import json
-import os
-import shutil
-import subprocess
-import tempfile
+from typing import Any
 
-from gerion_cli.core.logging import error
+from gerion_cli.tools._runner import ToolError, run_tool
 
 
-def run_secrets_tool(code_path, timeout=180):
-    if not shutil.which("gitleaks"):
-        error("Gitleaks tool not found in PATH.")
-        return []
-
-    # Create a temporary file for the report
-    with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as temp_report:
-        report_path = temp_report.name
-
-    command = ["gitleaks", "dir", code_path, "--exit-code", "0", "-f", "json", "-r", report_path]
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)  # noqa: F841
-        with open(report_path) as file:
-            data = json.load(file)
-            return data
-    except subprocess.TimeoutExpired:
-        error(f"Secrets scan timed out after {timeout} seconds.")
-        return []
-    except Exception as e:
-        error(f"An error occurred while reading the JSON file: {e}")
-        return None
-    finally:
-        if os.path.exists(report_path):
-            os.remove(report_path)
+def run_secrets_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]:
+    """Run Gitleaks and return its findings list. Raises ToolError on failure."""
+    # --exit-code 0: leaks found is still exit 0; any other code is an error.
+    data = run_tool(
+        "gitleaks",
+        lambda report_path: ["gitleaks", "dir", code_path, "--exit-code", "0", "-f", "json", "-r", report_path],
+        timeout=timeout,
+    )
+    if not isinstance(data, list):
+        raise ToolError("gitleaks wrote an unexpected report (expected a JSON list).")
+    return data

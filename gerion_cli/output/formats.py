@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from typing import Any
 
-from gerion_cli.core.logging import info
+from gerion_cli.core.logging import info, warning
 from gerion_cli.core.types import OutputFormat
 
 
@@ -24,6 +24,27 @@ def sanitize_verbose_text(text: str) -> str:
     text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
 
     return text
+
+_EXTENSION_FORMATS = {
+    '.json': OutputFormat.JSON,
+    '.md': OutputFormat.MARKDOWN,
+    '.markdown': OutputFormat.MARKDOWN,
+    '.sarif': OutputFormat.SARIF,
+}
+
+
+def resolve_file_format(filename: str, output_format: OutputFormat | None) -> OutputFormat:
+    """Format for --output-file: the explicit --format, else inferred from the extension."""
+    if output_format and output_format != OutputFormat.TABLE:
+        return output_format
+    if output_format == OutputFormat.TABLE:
+        warning("The table format cannot be written to a file; using the file extension instead.")
+    for extension, inferred in _EXTENSION_FORMATS.items():
+        if filename.lower().endswith(extension):
+            return inferred
+    warning(f"Could not infer format from file '{filename}'. Defaulting to JSON.")
+    return OutputFormat.JSON
+
 
 def save_to_file(results: dict[str, Any], filename: str, output_format: OutputFormat = OutputFormat.JSON):
     """
