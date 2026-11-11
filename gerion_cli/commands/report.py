@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 from enum import Enum
 
@@ -9,6 +8,7 @@ from rich.console import Console
 from rich.table import Table
 
 from gerion_cli.api.auth import authenticate_with_api
+from gerion_cli.api.http import HTTP_TIMEOUT, check_api_url, ssl_verify
 from gerion_cli.core.config import CLIENT_ID
 from gerion_cli.core.logging import error, info, success, warning
 from gerion_cli.core.metadata import get_metadata
@@ -88,19 +88,21 @@ def report(
     params = {k: v for k, v in filters.items() if v is not None}
 
     try:
-        with console.status("[bold green]Fetching findings..."):  # noqa: SIM117
-            with httpx.Client(verify=os.environ.get('GERION_CA_BUNDLE', True)) as client:
-                response = client.get(
-                    f"{effective_api_url}/api/v1/reporting/findings",
-                    params=params,
-                    headers={"Authorization": f"Bearer {jwt_token}"},
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                findings = response.json()
+        # URL and TLS settings were validated by authenticate_with_api().
+        with (
+            console.status("[bold green]Fetching findings..."),
+            httpx.Client(verify=ssl_verify(), timeout=HTTP_TIMEOUT) as client,
+        ):
+            response = client.get(
+                f"{check_api_url(effective_api_url)}/api/v1/reporting/findings",
+                params=params,
+                headers={"Authorization": f"Bearer {jwt_token}"},
+            )
+            response.raise_for_status()
+            findings = response.json()
     except Exception as e:
         error(f"Error fetching report data: {str(e)}")
-        raise typer.Abort()  # noqa: B904
+        raise typer.Abort() from None
 
     if not findings:
         warning("No findings found for the specified filters.")

@@ -3,11 +3,10 @@ Authentication functionality for Gerion API.
 Uses M2M API key authentication to get JWT tokens from API Gateway.
 """
 import json
-import os
 
 import httpx
 
-from gerion_cli.api.http import response_excerpt
+from gerion_cli.api.http import HTTP_TIMEOUT, ApiConfigError, check_api_url, response_excerpt, ssl_verify
 from gerion_cli.core.logging import debug, error, info
 from gerion_cli.core.types import SecretString
 
@@ -19,6 +18,13 @@ def authenticate_with_api(api_url: str, client_id: str, api_key: SecretString):
     Uses the M2M authentication endpoint: POST /api/v1/auth/m2m/authenticate
     API key can be provided via Authorization Bearer header or X-API-Key header.
     """
+    try:
+        api_url = check_api_url(api_url)
+        ssl_context = ssl_verify()
+    except ApiConfigError as e:
+        error(str(e))
+        return None
+
     auth_url = f'{api_url}/api/v1/auth/m2m/authenticate'
     auth_data = {
         "client_id": client_id
@@ -33,8 +39,9 @@ def authenticate_with_api(api_url: str, client_id: str, api_key: SecretString):
     try:
         debug(f"Authenticating with M2M API key at: {auth_url}")
         debug(f"Client ID: {client_id}")
-        ssl_verify = os.environ.get('GERION_CA_BUNDLE', True)
-        response = httpx.post(auth_url, json=auth_data, headers=headers, follow_redirects=True, verify=ssl_verify)
+        response = httpx.post(
+            auth_url, json=auth_data, headers=headers, follow_redirects=True, verify=ssl_context, timeout=HTTP_TIMEOUT
+        )
 
         debug(f"Response status: {response.status_code}")
 

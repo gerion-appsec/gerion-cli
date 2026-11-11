@@ -76,6 +76,8 @@ export GERION_API_URL="https://api.gerion.dev"
 export GERION_API_KEY="your-m2m-api-key"
 ```
 
+Use an `https://` API URL: the API key is sent to it. Plain `http://` is accepted for local development but prints a warning unless the host is `localhost`, `127.0.0.1` or `::1`. To trust a private CA, set `GERION_CA_BUNDLE` to a PEM file or to a directory of hashed certificates.
+
 Copy `env.example` to `.env` for local development. All options can also be passed directly as CLI flags on each command.
 
 The `CLIENT_ID` is set automatically to `gerion-cli-{version}` (e.g. `gerion-cli-1.0.4`). It can be overridden with `GERION_CLIENT_ID` if needed.
