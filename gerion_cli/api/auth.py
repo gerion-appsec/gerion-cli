@@ -7,6 +7,7 @@ import os
 
 import httpx
 
+from gerion_cli.api.http import response_excerpt
 from gerion_cli.core.logging import debug, error, info
 from gerion_cli.core.types import SecretString
 
@@ -40,7 +41,8 @@ def authenticate_with_api(api_url: str, client_id: str, api_key: SecretString):
         if response.status_code == 200:
             try:
                 token_data = response.json()
-                debug(f"Response data: {json.dumps(token_data, indent=2)}")
+                # Never log values: the response carries the access token.
+                debug(f"Response fields: {', '.join(sorted(token_data))}")
 
                 # M2M endpoint returns access_token in the response
                 access_token = token_data.get('access_token')
@@ -51,21 +53,19 @@ def authenticate_with_api(api_url: str, client_id: str, api_key: SecretString):
                     debug(f"API Key ID: {token_data.get('api_key_id', 'unknown')}")
                     return access_token
                 else:
-                    error("No access_token found in response. Available fields:")
-                    for key, value in token_data.items():
-                        debug(f"  {key}: {type(value).__name__}")
+                    error("No access_token found in response.")
                     return None
 
             except json.JSONDecodeError as e:
                 error(f"Failed to parse JSON response: {e}")
-                debug(f"Raw response: {response.text}")
+                debug(f"Response content type: {response.headers.get('content-type', 'unknown')}")
                 return None
         elif response.status_code == 401:
             error("Authentication failed: Invalid API key or client_id")
-            debug(f"Response: {response.text}")
+            debug(f"Response: {response_excerpt(response)}")
             return None
         else:
-            error(f"Authentication failed: {response.status_code} - {response.text}")
+            error(f"Authentication failed: {response.status_code} - {response_excerpt(response)}")
             return None
 
     except httpx.HTTPError as e:

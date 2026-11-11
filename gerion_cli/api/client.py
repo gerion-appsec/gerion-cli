@@ -6,6 +6,7 @@ import os
 import httpx
 
 from gerion_cli.api.auth import authenticate_with_api
+from gerion_cli.api.http import response_excerpt
 from gerion_cli.core.logging import debug, error, success
 from gerion_cli.core.types import SecretString
 
@@ -59,7 +60,7 @@ def send_to_api(results, api_url: str, client_id: str, api_key: SecretString):
             success("Data sent to API Gateway successfully.")
             return True
         else:
-            error(f"Error sending data to API Gateway: {response.status_code} - {response.text}")
+            error(f"Error sending data to API Gateway: {response.status_code} - {response_excerpt(response)}")
             return False
 
     except httpx.HTTPError as e:

@@ -61,3 +61,25 @@ def test_authenticate_invalid_json(mock_post, mock_api_key):
     token = authenticate_with_api("http://api.test", "client-id", mock_api_key)
 
     assert token is None
+
+@patch("gerion_cli.api.auth.httpx.post")
+def test_debug_logging_never_prints_token_or_key(mock_post, mock_api_key, capsys):
+    """--log-level debug output ends up in CI logs: no token or API key values."""
+    from gerion_cli.core.logging import LogLevel, set_log_level
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"access_token": "eyJhbGciOi.secret-jwt.sig", "expires_in": 3600}
+    mock_post.return_value = mock_response
+
+    set_log_level(LogLevel.DEBUG)
+    try:
+        assert authenticate_with_api("https://api.test", "client-id", mock_api_key) == "eyJhbGciOi.secret-jwt.sig"
+    finally:
+        set_log_level(LogLevel.INFO)
+
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert "access_token" in output  # key names are fine
+    assert "secret-jwt" not in output
+    assert "test-api-key" not in output
