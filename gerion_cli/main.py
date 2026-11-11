@@ -1,6 +1,7 @@
+
 import typer
-from typing import Optional
-from gerion_cli.commands import secrets_scan, sca_scan, iac_scan, sast_scan, scan_all, report
+
+from gerion_cli.commands import iac_scan, report, sast_scan, sca_scan, scan_all, secrets_scan
 from gerion_cli.core.config import __version__
 
 
@@ -11,12 +12,12 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
-app = typer.Typer(no_args_is_help=True)
+app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
 
 # Add version option to the main app
 @app.callback(invoke_without_command=True)
 def main(
-    version: Optional[bool] = typer.Option(
+    version: bool | None = typer.Option(
         None,
         "--version",
         "-v",
