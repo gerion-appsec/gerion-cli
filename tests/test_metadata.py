@@ -252,3 +252,40 @@ def test_ci_block_overrides_with_non_empty_values(tmp_path):
         metadata = get_metadata(code_path=None)
     assert (metadata["code_path"], metadata["commit_hash"], metadata["branch_name"]) == ("/ws", "abc", "dev")
     assert (metadata["repository_name"], metadata["build_id"]) == ("repo", "8")
+
+
+def _pr_event(tmp_path, content):
+    path = tmp_path / "event.json"
+    path.write_text(content)
+    return str(path)
+
+
+def _github_commit(env, tmp_path):
+    with patch.dict(os.environ, {**_GITHUB, **env}, clear=True):
+        return get_metadata(code_path=str(tmp_path))["commit_hash"]
+
+
+def test_github_commit_uses_pr_head_sha_from_event_file(tmp_path):
+    event = _pr_event(tmp_path, '{"pull_request": {"head": {"sha": "headsha"}}}')
+    env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": event,
+           "GITHUB_SHA": "mergesha", "GITHUB_WORKFLOW_SHA": "wf"}
+    assert _github_commit(env, tmp_path) == "headsha"
+    assert _github_commit({**env, "GITHUB_EVENT_NAME": "pull_request_target"}, tmp_path) == "headsha"
+
+
+@pytest.mark.parametrize("content", ["not json", "{}", '{"pull_request": null}', '{"pull_request": {"head": {"sha": 5}}}', None])
+def test_github_commit_tolerates_bad_event_file(tmp_path, content):
+    event = _pr_event(tmp_path, content) if content is not None else str(tmp_path / "missing.json")
+    env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": event, "GITHUB_SHA": "mergesha"}
+    assert _github_commit(env, tmp_path) == "mergesha"
+
+
+def test_github_commit_ignores_event_file_for_push(tmp_path):
+    event = _pr_event(tmp_path, '{"pull_request": {"head": {"sha": "headsha"}}}')
+    env = {"GITHUB_EVENT_NAME": "push", "GITHUB_EVENT_PATH": event, "GITHUB_SHA": "pushsha"}
+    assert _github_commit(env, tmp_path) == "pushsha"
+
+
+def test_github_commit_falls_back_to_workflow_sha(tmp_path):
+    assert _github_commit({"GITHUB_WORKFLOW_SHA": "wf"}, tmp_path) == "wf"
+    assert _github_commit({"GITHUB_SHA": "s", "GITHUB_WORKFLOW_SHA": "wf"}, tmp_path) == "s"

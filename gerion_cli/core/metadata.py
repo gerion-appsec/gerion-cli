@@ -1,6 +1,7 @@
 """
 Metadata handling for Gerion CLI.
 """
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -98,6 +99,26 @@ def _update_non_empty(metadata: dict, values: dict) -> None:
     metadata.update({key: value for key, value in values.items() if value})
 
 
+def _github_commit_sha() -> str | None:
+    """
+    Commit being scanned on GitHub Actions: the PR head SHA for pull_request events
+    (GITHUB_SHA is the synthetic merge commit there), else GITHUB_SHA, else
+    GITHUB_WORKFLOW_SHA. The event file is optional: the official Action does not
+    forward it, so any problem reading it is ignored.
+    """
+    if os.getenv("GITHUB_EVENT_NAME", "").startswith("pull_request"):
+        event_path = os.getenv("GITHUB_EVENT_PATH")
+        if event_path:
+            try:
+                with open(event_path, encoding="utf-8") as event_file:
+                    head_sha = json.load(event_file)["pull_request"]["head"]["sha"]
+                if isinstance(head_sha, str) and head_sha:
+                    return head_sha
+            except (OSError, ValueError, KeyError, TypeError):
+                debug("GitHub event file unreadable or without a PR head SHA.")
+    return os.getenv("GITHUB_SHA") or os.getenv("GITHUB_WORKFLOW_SHA")
+
+
 def _numeric_env(*names: str) -> str | None:
     """First of the given environment variables whose value is a purely numeric string."""
     for name in names:
@@ -165,7 +186,7 @@ def get_metadata(code_path=None):
             "branch_name": os.getenv("GITHUB_HEAD_REF") or os.getenv("GITHUB_REF_NAME"),
             "build_id": _numeric_env("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"),
             "code_path": os.getenv("GITHUB_WORKSPACE"),
-            "commit_hash": os.getenv("GITHUB_WORKFLOW_SHA"),
+            "commit_hash": _github_commit_sha(),
             "commit_author": os.getenv("GITHUB_ACTOR")
         })
 
