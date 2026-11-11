@@ -66,22 +66,25 @@ def generate_unique_id(strings):
 
     return truncated_hash_hex
 
-def redact_text(text, visible_percent=0.3):
+REDACTED = "[REDACTED]"
+MAX_VISIBLE_PER_SIDE = 4
+
+
+def redact_text(text, visible_percent=0.25):
     """
-    Redacts the middle part of a string, keeping a percentage visible at start and end.
-    Total visible is visible_percent of the length.
+    Redacts a secret for display, keeping a hint of its start and end.
+
+    At most visible_percent of the value is revealed in total, and never more than
+    MAX_VISIBLE_PER_SIDE characters per side; values too short for that are fully masked.
     """
-    if not text or len(text) < 4:
+    if not text:
         return text
 
-    length = len(text)
-    visible_len = int(length * visible_percent)
-    if visible_len < 2: visible_len = 2 # Keep at least 1 char on each side if possible  # noqa: E701
+    side_len = min(MAX_VISIBLE_PER_SIDE, int(len(text) * visible_percent) // 2)
+    if side_len < 1:
+        return REDACTED
 
-    # Split visible length between start and end
-    side_len = visible_len // 2
-
-    return f"{text[:side_len]}...[REDACTED]...{text[-side_len:]}"
+    return f"{text[:side_len]}...{REDACTED}...{text[-side_len:]}"
 
 SEVERITY_RANK = {
     'CRITICAL': 4,

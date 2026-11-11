@@ -33,8 +33,9 @@ def test_generate_finding_template(mock_metadata):
 
 def test_redact_text():
     """Test text redaction logic."""
-    # Test short text (no redaction)
-    assert redact_text("abc") == "abc"
+    # Short values are fully masked
+    assert redact_text("abc") == "[REDACTED]"
+    assert redact_text("abcdefg") == "[REDACTED]"
 
     # Test long text
     long_text = "start_of_secret_value_end"
@@ -49,3 +50,17 @@ def test_redact_text_none():
     """Test redaction handling of None/empty."""
     assert redact_text(None) is None
     assert redact_text("") == ""
+
+
+def test_redact_text_caps_revealed_part():
+    """A 40-char token used to reveal 12 characters (30%) in the uploaded mitigation."""
+    token = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+    redacted = redact_text(token)
+
+    assert redacted == "ghp_...[REDACTED]...Q7r8"
+    visible = len(redacted) - len("...[REDACTED]...")
+    assert visible <= 8
+    for length in range(1, 200):
+        value = "x" * length
+        shown = redact_text(value).replace("...[REDACTED]...", "").replace("[REDACTED]", "")
+        assert len(shown) <= min(8, length * 0.25)
