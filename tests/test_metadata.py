@@ -181,3 +181,111 @@ def test_get_metadata_repo_without_commits(tmp_path):
     metadata = get_metadata(code_path=str(tmp_path / "work"))
     assert metadata["repository_name"] == "local"
     assert metadata["commit_hash"] is None
+
+
+_GITHUB = {"GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "o/r"}
+_GITLAB = {"GITLAB_CI": "true", "CI_PROJECT_NAME": "proj"}
+
+
+@pytest.mark.parametrize("env, expected", [
+    ({**_GITHUB, "GITHUB_RUN_ID": "9001", "GITHUB_RUN_ATTEMPT": "2"}, "9001"),
+    ({**_GITHUB, "GITHUB_RUN_ATTEMPT": "2"}, "2"),
+    ({**_GITHUB, "GITHUB_RUN_ID": "abc", "GITHUB_RUN_ATTEMPT": "3"}, "3"),
+    ({**_GITHUB}, "0"),
+    ({**_GITLAB, "CI_PIPELINE_ID": "77", "CI_JOB_ID": "5", "CI_CONCURRENT_ID": "1"}, "77"),
+    ({**_GITLAB, "CI_JOB_ID": "5", "CI_CONCURRENT_ID": "1"}, "5"),
+    ({**_GITLAB, "CI_CONCURRENT_ID": "1"}, "1"),
+    ({**_GITLAB, "CI_PIPELINE_ID": "", "CI_JOB_ID": "x1"}, "0"),
+    ({"JENKINS_URL": "http://j", "BUILD_NUMBER": "12"}, "12"),
+    ({"JENKINS_URL": "http://j"}, "0"),
+    ({"JENKINS_URL": "http://j", "BUILD_NUMBER": "#12"}, "0"),
+])
+def test_ci_build_id_is_numeric_with_fallbacks(env, expected, tmp_path):
+    with patch.dict(os.environ, env, clear=True):
+        assert get_metadata(code_path=str(tmp_path))["build_id"] == expected
+
+
+def test_gerion_build_id_override_wins_and_warns_when_not_numeric(tmp_path):
+    env = {**_GITHUB, "GITHUB_RUN_ID": "9001", "GERION_BUILD_ID": "123-2"}
+    with patch.dict(os.environ, env, clear=True), patch.object(metadata_module, "warning") as warn:
+        assert get_metadata(code_path=str(tmp_path))["build_id"] == "123-2"
+    warn.assert_called_once()
+    assert "numeric" in warn.call_args.args[0]
+
+
+def test_gerion_build_id_numeric_does_not_warn(tmp_path):
+    with patch.dict(os.environ, {"GERION_BUILD_ID": "55"}, clear=True), patch.object(metadata_module, "warning") as warn:
+        assert get_metadata(code_path=str(tmp_path))["build_id"] == "55"
+    warn.assert_not_called()
+
+
+@pytest.mark.parametrize("env, expected", [
+    ({"CI_PROJECT_DIR": "/builds/g/p", "CI_BUILDS_DIR": "/builds"}, "/builds/g/p"),
+    ({"CI_BUILDS_DIR": "/builds"}, "/builds"),
+    ({"CI_PROJECT_DIR": ""}, "KEEP"),
+])
+def test_gitlab_code_path_prefers_project_dir(env, expected, tmp_path):
+    with patch.dict(os.environ, {**_GITLAB, **env}, clear=True):
+        code_path = get_metadata(code_path=str(tmp_path))["code_path"]
+    assert code_path == (str(tmp_path) if expected == "KEEP" else expected)
+
+
+def test_ci_block_never_overwrites_with_none(tmp_path):
+    """Jenkins without WORKSPACE/GIT_COMMIT/...: the git/default values survive."""
+    repo = _make_repo(tmp_path / "work", origin="git@github.com:myorg/myrepo.git")
+    sha = _git(repo, "rev-parse", "HEAD")
+    with patch.dict(os.environ, {"JENKINS_URL": "http://j", "PATH": os.environ["PATH"], **{
+        k: v for k, v in _GIT_ENV.items() if k.startswith("GIT_CONFIG")}}, clear=True):
+        metadata = get_metadata(code_path=str(repo))
+    assert metadata["code_path"] == str(repo)
+    assert metadata["commit_hash"] == sha
+    assert metadata["commit_author"] == "Git User"
+    assert metadata["repository_name"] == "myrepo"
+    assert metadata["branch_name"] == "feature-branch"
+    assert metadata["build_id"] == "0"
+
+
+def test_ci_block_overrides_with_non_empty_values(tmp_path):
+    env = {"JENKINS_URL": "http://j", "WORKSPACE": "/ws", "GIT_COMMIT": "abc", "GIT_BRANCH": "origin/dev",
+           "GIT_URL": "https://h/o/repo.git", "BUILD_NUMBER": "8"}
+    with patch.dict(os.environ, env, clear=True):
+        metadata = get_metadata(code_path=None)
+    assert (metadata["code_path"], metadata["commit_hash"], metadata["branch_name"]) == ("/ws", "abc", "dev")
+    assert (metadata["repository_name"], metadata["build_id"]) == ("repo", "8")
+
+
+def _pr_event(tmp_path, content):
+    path = tmp_path / "event.json"
+    path.write_text(content)
+    return str(path)
+
+
+def _github_commit(env, tmp_path):
+    with patch.dict(os.environ, {**_GITHUB, **env}, clear=True):
+        return get_metadata(code_path=str(tmp_path))["commit_hash"]
+
+
+def test_github_commit_uses_pr_head_sha_from_event_file(tmp_path):
+    event = _pr_event(tmp_path, '{"pull_request": {"head": {"sha": "headsha"}}}')
+    env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": event,
+           "GITHUB_SHA": "mergesha", "GITHUB_WORKFLOW_SHA": "wf"}
+    assert _github_commit(env, tmp_path) == "headsha"
+    assert _github_commit({**env, "GITHUB_EVENT_NAME": "pull_request_target"}, tmp_path) == "headsha"
+
+
+@pytest.mark.parametrize("content", ["not json", "{}", '{"pull_request": null}', '{"pull_request": {"head": {"sha": 5}}}', None])
+def test_github_commit_tolerates_bad_event_file(tmp_path, content):
+    event = _pr_event(tmp_path, content) if content is not None else str(tmp_path / "missing.json")
+    env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": event, "GITHUB_SHA": "mergesha"}
+    assert _github_commit(env, tmp_path) == "mergesha"
+
+
+def test_github_commit_ignores_event_file_for_push(tmp_path):
+    event = _pr_event(tmp_path, '{"pull_request": {"head": {"sha": "headsha"}}}')
+    env = {"GITHUB_EVENT_NAME": "push", "GITHUB_EVENT_PATH": event, "GITHUB_SHA": "pushsha"}
+    assert _github_commit(env, tmp_path) == "pushsha"
+
+
+def test_github_commit_falls_back_to_workflow_sha(tmp_path):
+    assert _github_commit({"GITHUB_WORKFLOW_SHA": "wf"}, tmp_path) == "wf"
+    assert _github_commit({"GITHUB_SHA": "s", "GITHUB_WORKFLOW_SHA": "wf"}, tmp_path) == "s"

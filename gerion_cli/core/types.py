@@ -12,6 +12,14 @@ class OutputFormat(StrEnum):
     TABLE = "table"
 
 
+class FailOn(StrEnum):
+    """Minimum finding severity that makes a scan exit with code 2 (--fail-on)."""
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
 class SecretString:
     """
     Holds a secret (API key) without ever exposing it through str()/repr().

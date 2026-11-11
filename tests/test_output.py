@@ -122,3 +122,30 @@ def test_markdown_escapes_table_cells_and_joins_cves():
     secrets = generate_markdown_content({"metadata": {}, "findings": findings[1:]})
     row = next(line for line in secrets.splitlines() if "x \\| y z" in line)
     assert row.count(" | ") == 2  # Severity | Title | File:Line
+
+
+@pytest.mark.parametrize("fmt", [OutputFormat.MARKDOWN, OutputFormat.SARIF, OutputFormat.JSON])
+def test_outputs_are_identical_for_any_severity_casing(sample_results, tmp_path, fmt):
+    """Scanners now emit upper-case severities; every consumer must treat casing alike."""
+    rendered = {}
+    for casing in ("High", "HIGH", "high"):
+        sample_results["findings"][0]["severity"] = casing
+        out = tmp_path / f"out-{casing}"
+        save_to_file(sample_results, str(out), fmt)
+        rendered[casing] = out.read_text()
+    if fmt == OutputFormat.JSON:
+        return  # raw passthrough of the finding
+    assert rendered["High"] == rendered["HIGH"] == rendered["high"]
+
+
+@pytest.mark.parametrize("scan_type", ["Secrets", "SCA", "IaC", "SAST"])
+def test_tables_are_identical_for_any_severity_casing(scan_type, capsys):
+    from gerion_cli.output.tables import findings_table
+
+    outputs = []
+    for casing in ("High", "HIGH"):
+        finding = {"severity": casing, "title": "t", "file_path": "f", "line_number": 1, "component": "c",
+                   "cve": "CVE-1", "description": "d", "mitigation": "m"}
+        findings_table([finding], scan_type)
+        outputs.append(capsys.readouterr().out)
+    assert outputs[0] == outputs[1]

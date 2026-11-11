@@ -107,6 +107,7 @@ Each scan command accepts the same core set of options:
 | `--output-file` | — | Write results to a file (suppresses API and console output) |
 | `--format` | — | Output format for stdout: `json`, `markdown`, `sarif`, `table` |
 | `--timeout` | — | Scanner execution timeout in seconds (default: 180) |
+| `--fail-on` | `GERION_FAIL_ON` | Exit with code 2 if any finding has at least this severity: `critical`, `high`, `medium`, `low` (default: unset, findings never fail the command) |
 | `--log-level` | — | Logging verbosity: `debug`, `info`, `warning`, `error`, `critical` |
 
 The IaC scan additionally accepts `--queries-path` to specify a custom KICS queries directory.
@@ -140,8 +141,11 @@ Every scan runs even if another one fails. The results of the scans that succeed
 
 | Code | Meaning |
 |------|---------|
-| `0` | The scan completed. Findings do not fail the build. |
-| `1` | A scanner could not run or failed (binary not in `PATH`, timeout, unexpected scanner exit code, missing or invalid report), or the command could not complete. Its findings are missing, so the result must not be treated as clean. |
+| `0` | The scan completed and, if `--fail-on` is set, no finding reached the threshold. |
+| `1` | A scanner could not run or failed (binary not in `PATH`, timeout, unexpected scanner exit code, missing or invalid report), the upload to the API failed, or the command could not complete. Findings are missing or were not stored, so the result must not be treated as clean. |
+| `2` | `--fail-on` is set and at least one finding has that severity or higher. Results are output or uploaded as usual first. |
+
+Exit code `1` takes precedence over `2`. `scan-all` evaluates `--fail-on` across all completed scans. Findings with an unknown or missing severity count as `low`. Without API credentials the CLI runs in console mode, which is not a failure; with credentials, a failed upload still prints the findings table but exits `1`.
 
 A project with nothing to scan (for example no dependency manifests for SCA) is a completed scan with no findings, not an error.
 
@@ -181,7 +185,7 @@ uv run gerion report [PATH] [OPTIONS]
   run: |
     docker run --rm -v "$PWD:/code" \
       -e GERION_API_URL -e GERION_API_KEY \
-      gerion-cli scan-all /code
+      gerion-cli scan-all /code --fail-on high   # exit 2 on HIGH or CRITICAL findings
 ```
 
 ### GitLab CI
@@ -191,12 +195,25 @@ gerion-scan:
   image: gerion-cli:latest
   script:
     # GERION_API_URL and GERION_API_KEY are read from the CI/CD variables
-    - gerion scan-all .
+    - gerion scan-all . --fail-on high
 ```
 
 Prefer passing the API key through the `GERION_API_KEY` environment variable rather than `--api-key`: command-line arguments are visible to other processes on the machine.
 
-Scan results include full Git metadata (repository, branch, commit hash, author, build ID) sourced from environment variables or the local Git repository.
+### Scan metadata
+
+Scan results include Git metadata (repository, branch, commit hash, author, build ID, code path). It starts from the local Git repository, is overridden by the CI platform's variables (only when they are set and non-empty), and finally by the `GERION_*` variables.
+
+| Platform | Variables read |
+|----------|----------------|
+| GitHub Actions (detected by `GITHUB_SERVER_URL`) | `GITHUB_REPOSITORY`, `GITHUB_HEAD_REF` / `GITHUB_REF_NAME`, `GITHUB_RUN_ID` (falls back to `GITHUB_RUN_ATTEMPT`), `GITHUB_WORKSPACE`, `GITHUB_ACTOR`. Commit: PR head SHA from `GITHUB_EVENT_PATH` on `pull_request*` events (`GITHUB_EVENT_NAME`), else `GITHUB_SHA`, else `GITHUB_WORKFLOW_SHA` |
+| GitLab CI | `CI_PROJECT_NAME`, `CI_MERGE_REQUEST_SOURCE_BRANCH_NAME` / `CI_COMMIT_REF_NAME`, `CI_PIPELINE_ID` (falls back to `CI_JOB_ID`, then `CI_CONCURRENT_ID`), `CI_PROJECT_DIR` (falls back to `CI_BUILDS_DIR`), `CI_COMMIT_SHA`, `CI_COMMIT_AUTHOR` |
+| Jenkins | `GIT_URL`, `GIT_BRANCH`, `BUILD_NUMBER`, `WORKSPACE`, `GIT_COMMIT`, `GIT_COMMITTER_NAME` |
+| Manual overrides | `GERION_REPO_NAME`, `GERION_BRANCH_NAME`, `GERION_COMMIT_HASH`, `GERION_BUILD_ID` |
+
+The API expects `build_id` to be numeric: CI detection only uses numeric values and otherwise keeps `0`, and a non-numeric `GERION_BUILD_ID` prints a warning. Scans are stored per (organization, branch, scan type, build ID), so a build ID that is unique per run keeps one scan per run.
+
+The official GitHub Action forwards only a fixed list of variables to the container. For per-run scan history and pull request head commits it should also forward `GITHUB_RUN_ID` and ideally `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME` and `GITHUB_EVENT_PATH` (mounting the event file). Until then the CLI falls back to `GITHUB_RUN_ATTEMPT` and `GITHUB_SHA`, so every run of a branch overwrites the same scan and pull request scans report the merge commit.
 
 ---
 

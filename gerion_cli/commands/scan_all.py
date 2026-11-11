@@ -4,9 +4,17 @@ from typing import Any
 
 import typer
 
-from gerion_cli.commands.base import build_results, dispatch_results, execute_tool, write_output_file
+from gerion_cli.commands.base import (
+    FAIL_ON_OPTION,
+    build_results,
+    dispatch_results,
+    enforce_fail_on,
+    execute_tool,
+    write_output_file,
+)
 from gerion_cli.core import (
     CLIENT_ID,
+    FailOn,
     LogLevel,
     OutputFormat,
     SecretString,
@@ -45,6 +53,7 @@ def scan_all(
     format: OutputFormat = typer.Option(None, "--format", "-f", help="Output format for file saving or stdout (json, markdown, sarif)"),
     timeout: int = typer.Option(180, "--timeout", "-t", help="Tool execution timeout in seconds (per scan)"),
     sequential: bool = typer.Option(False, "--sequential", help="Run the scanners one after another instead of in parallel (lower peak CPU and memory)"),
+    fail_on: FailOn = FAIL_ON_OPTION,
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
@@ -54,7 +63,8 @@ def scan_all(
     another with --sequential). Results are always reported in that fixed order.
     When --output-file is provided, all findings are aggregated into a single file.
     When sending to API, each scan submits independently.
-    Every scan runs even if another one fails; the command then exits with code 1.
+    Every scan runs (and uploads) even if another one fails; the command then exits with code 1.
+    With --fail-on, it exits with code 2 if any finding of the completed scans meets the threshold.
 
     Examples:
         # Scan current directory with all tools
@@ -81,6 +91,7 @@ def scan_all(
     base_metadata = get_metadata(code_path=code_path)
     completed: list[dict[str, Any]] = []
     failed: list[str] = []
+    upload_failed: list[str] = []
 
     outcomes = _execute_scans(code_path, timeout, sequential)
 
@@ -91,8 +102,10 @@ def scan_all(
             failed.append(config["scan_type"])
             continue
         completed.append(results)
-        if not aggregate_output:
-            dispatch_results(results, config["scan_type"], api_url, effective_client_id, api_key_string, None, None)
+        if not aggregate_output and dispatch_results(
+            results, config["scan_type"], api_url, effective_client_id, api_key_string, None, None
+        ):
+            upload_failed.append(config["scan_type"])
 
     all_findings = [finding for results in completed for finding in results['findings']]
     total_duration = round(time.monotonic() - started, 2)
@@ -118,14 +131,19 @@ def scan_all(
         "Full Scan Summary",
         f"Completed scans: {', '.join(succeeded) or 'none'}\n"
         f"Failed scans: {', '.join(failed) or 'none'}\n"
+        f"Failed uploads: {', '.join(upload_failed) or 'none'}\n"
         f"Total findings: {len(all_findings)}\n"
         f"Total duration: {total_duration}s",
-        "red" if failed else "green"
+        "red" if failed or upload_failed else "green"
     )
 
     if failed:
         error(f"{len(failed)} of {len(SCAN_CONFIGS)} scans failed: {', '.join(failed)}. Their findings are missing.")
+    if upload_failed:
+        error(f"Uploading the results of {', '.join(upload_failed)} to the API failed; they were not stored.")
+    if failed or upload_failed:
         raise typer.Exit(1)
+    enforce_fail_on(all_findings, fail_on)
 
 
 def _run_scanner(config: dict[str, Any], code_path: str, timeout: int) -> tuple[Any, float] | Exception:

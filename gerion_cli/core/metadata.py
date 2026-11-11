@@ -1,11 +1,12 @@
 """
 Metadata handling for Gerion CLI.
 """
+import json
 import os
 import subprocess
 from pathlib import Path
 
-from gerion_cli.core.logging import debug
+from gerion_cli.core.logging import debug, warning
 
 GIT_TIMEOUT = 10
 # Never prompt for credentials and never take optional locks (no index refresh) in
@@ -92,6 +93,41 @@ def _extract_repo_name_from_url(url: str) -> str:
     return segments[-1] if segments else url
 
 
+def _update_non_empty(metadata: dict, values: dict) -> None:
+    """Override metadata fields only with non-empty values, so a missing CI variable
+    keeps the git-derived or default value instead of becoming None."""
+    metadata.update({key: value for key, value in values.items() if value})
+
+
+def _github_commit_sha() -> str | None:
+    """
+    Commit being scanned on GitHub Actions: the PR head SHA for pull_request events
+    (GITHUB_SHA is the synthetic merge commit there), else GITHUB_SHA, else
+    GITHUB_WORKFLOW_SHA. The event file is optional: the official Action does not
+    forward it, so any problem reading it is ignored.
+    """
+    if os.getenv("GITHUB_EVENT_NAME", "").startswith("pull_request"):
+        event_path = os.getenv("GITHUB_EVENT_PATH")
+        if event_path:
+            try:
+                with open(event_path, encoding="utf-8") as event_file:
+                    head_sha = json.load(event_file)["pull_request"]["head"]["sha"]
+                if isinstance(head_sha, str) and head_sha:
+                    return head_sha
+            except (OSError, ValueError, KeyError, TypeError):
+                debug("GitHub event file unreadable or without a PR head SHA.")
+    return os.getenv("GITHUB_SHA") or os.getenv("GITHUB_WORKFLOW_SHA")
+
+
+def _numeric_env(*names: str) -> str | None:
+    """First of the given environment variables whose value is a purely numeric string."""
+    for name in names:
+        value = (os.getenv(name) or "").strip()
+        if value.isascii() and value.isdigit():
+            return value
+    return None
+
+
 def get_metadata(code_path=None):
     """
     Get repository metadata from Git or environment variables.
@@ -145,12 +181,12 @@ def get_metadata(code_path=None):
 
     # Override with CI/CD environment variables
     if os.getenv("GITHUB_SERVER_URL"):
-        metadata.update({
+        _update_non_empty(metadata, {
             "repository_name": os.getenv("GITHUB_REPOSITORY"),
             "branch_name": os.getenv("GITHUB_HEAD_REF") or os.getenv("GITHUB_REF_NAME"),
-            "build_id": os.getenv("GITHUB_RUN_ATTEMPT"),
+            "build_id": _numeric_env("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"),
             "code_path": os.getenv("GITHUB_WORKSPACE"),
-            "commit_hash": os.getenv("GITHUB_WORKFLOW_SHA"),
+            "commit_hash": _github_commit_sha(),
             "commit_author": os.getenv("GITHUB_ACTOR")
         })
 
@@ -160,23 +196,24 @@ def get_metadata(code_path=None):
         branch_name = raw_branch[len("origin/"):] if raw_branch.startswith("origin/") else raw_branch
 
         # Jenkins sets GIT_URL to the full remote URL — extract the short repo name.
-        repo_name = _extract_repo_name_from_url(os.getenv("GIT_URL", "")) or "local"
+        git_url = os.getenv("GIT_URL")
+        repo_name = _extract_repo_name_from_url(git_url) if git_url else None
 
-        metadata.update({
+        _update_non_empty(metadata, {
             "repository_name": repo_name,
             "branch_name": branch_name,
-            "build_id": os.getenv("BUILD_NUMBER"),
+            "build_id": _numeric_env("BUILD_NUMBER"),
             "code_path": os.getenv("WORKSPACE"),
             "commit_hash": os.getenv("GIT_COMMIT"),
             "commit_author": os.getenv("GIT_COMMITTER_NAME"),
         })
 
     if os.getenv("GITLAB_CI"):
-        metadata.update({
+        _update_non_empty(metadata, {
             "repository_name": os.getenv("CI_PROJECT_NAME"),
             "branch_name": os.getenv("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME") or os.getenv("CI_COMMIT_REF_NAME"),
-            "build_id": os.getenv("CI_CONCURRENT_ID"),
-            "code_path": os.getenv("CI_BUILDS_DIR"),
+            "build_id": _numeric_env("CI_PIPELINE_ID", "CI_JOB_ID", "CI_CONCURRENT_ID"),
+            "code_path": os.getenv("CI_PROJECT_DIR") or os.getenv("CI_BUILDS_DIR"),
             "commit_hash": os.getenv("CI_COMMIT_SHA"),
             "commit_author": os.getenv("CI_COMMIT_AUTHOR")
         })
@@ -191,6 +228,11 @@ def get_metadata(code_path=None):
         manual_updates["commit_hash"] = os.getenv("GERION_COMMIT_HASH")
     if os.getenv("GERION_BUILD_ID"):
         manual_updates["build_id"] = os.getenv("GERION_BUILD_ID")
+        if not manual_updates["build_id"].strip().isdigit():
+            warning(
+                f"GERION_BUILD_ID '{manual_updates['build_id']}' is not numeric: "
+                "the API expects a numeric build id and may reject or mishandle the upload."
+            )
 
     if manual_updates:
         metadata.update(manual_updates)

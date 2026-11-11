@@ -8,6 +8,7 @@ import typer
 
 from gerion_cli.core import (
     CLIENT_ID,
+    FailOn,
     LogLevel,
     OutputFormat,
     SecretString,
@@ -21,6 +22,32 @@ from gerion_cli.core import (
 )
 from gerion_cli.output import findings_table, resolve_file_format, save_to_file
 from gerion_cli.tools import ToolError
+
+FAIL_ON_OPTION = typer.Option(
+    None, "--fail-on", envvar="GERION_FAIL_ON", case_sensitive=False,
+    help="Exit with code 2 if any finding has at least this severity (default: never fail on findings)",
+)
+
+_SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+
+def count_findings_at_or_above(findings: list[dict[str, Any]], threshold: FailOn) -> int:
+    """Findings whose severity is >= threshold; unknown or missing severities count as LOW."""
+    minimum = _SEVERITY_RANK[threshold.upper()]
+    return sum(
+        _SEVERITY_RANK.get(str(finding.get("severity") or "").upper(), 1) >= minimum for finding in findings
+    )
+
+
+def enforce_fail_on(findings: list[dict[str, Any]], fail_on: FailOn | None) -> None:
+    """Exit with code 2 when --fail-on is set and a finding meets the threshold."""
+    if fail_on is None:
+        return
+    count = count_findings_at_or_above(findings, fail_on)
+    if count:
+        error(f"{count} finding(s) with severity {fail_on.upper()} or higher (--fail-on {fail_on.value}).")
+        raise typer.Exit(2)
+    info(f"No findings with severity {fail_on.upper()} or higher (--fail-on {fail_on.value}).")
 
 
 @cache
@@ -125,8 +152,11 @@ def dispatch_results(
     api_key: SecretString,
     output_file: str | None,
     format: OutputFormat | None,
-) -> None:
+) -> bool:
     """
+    Returns True when the results were uploaded to the API but the upload failed
+    (callers must then exit non-zero); False otherwise, including console mode.
+
     Output Priority:
     1. Output File -> Save to file (no table, no API)
     2. Format (explicitly requested) -> Print formatted output (no table, no API)
@@ -141,7 +171,7 @@ def dispatch_results(
         # If format is provided and output_file is NOT set, print to stdout.
         if format == OutputFormat.TABLE:
             findings_table(results['findings'], scan_type)
-            return
+            return False
 
         try:
             from gerion_cli.output import print_formatted
@@ -159,11 +189,13 @@ def dispatch_results(
         if not success_result:
             warning("Results will be displayed in console only.")
             findings_table(results['findings'], scan_type)
+            return True
     else:
         # Fallback: Local console mode.
         if not api_key:
             warning("No API key provided. Results will not be sent to the API.")
         findings_table(results['findings'], scan_type)
+    return False
 
 
 def run_scan(
@@ -179,13 +211,16 @@ def run_scan(
     format: OutputFormat,
     timeout: int,
     log_level: LogLevel,
+    fail_on: FailOn | None = None,
     **runner_kwargs: Any
 ):
     """
     Base function to run a security scan using a specified tool runner and parser.
 
-    Exits with code 1 when the scanner could not run or failed: a scan that did not
-    happen must never be reported as "no findings".
+    Exits with code 1 when the scanner could not run or failed (a scan that did not
+    happen must never be reported as "no findings") or when the API upload failed
+    (CI must not believe the results were stored). With fail_on set, exits with code 2
+    once the results have been output if a finding meets the threshold; 1 wins over 2.
     """
     set_log_level(log_level)
     api_key_string = SecretString.from_typer_option(api_key)
@@ -208,5 +243,8 @@ def run_scan(
         raise typer.Exit(1) from None
 
     results = build_results(scan_type, tool_output, tool_parser, metadata, code_path)
-    dispatch_results(results, scan_type, api_url, effective_client_id, api_key_string, output_file, format)
+    if dispatch_results(results, scan_type, api_url, effective_client_id, api_key_string, output_file, format):
+        error(f"{scan_type} results could not be uploaded to the API; the findings above were not stored.")
+        raise typer.Exit(1)
+    enforce_fail_on(results['findings'], fail_on)
     return results
