@@ -12,9 +12,9 @@ A unified command-line interface for running security scans on codebases. Gerion
 
 | Type | Tool | Version | Detects |
 |------|------|---------|---------|
-| SAST | [Opengrep](https://github.com/opengrep/opengrep) | 1.16.5 | Code vulnerabilities and anti-patterns |
-| SCA | [OSV-Scanner](https://github.com/google/osv-scanner) | 2.3.5 | Vulnerable dependencies (CVEs) |
-| IaC | [KICS](https://github.com/Checkmarx/kics) | 2.1.20 | Infrastructure as Code misconfigurations |
+| SAST | [Opengrep](https://github.com/opengrep/opengrep) | 1.33.1 | Code vulnerabilities and anti-patterns |
+| SCA | [OSV-Scanner](https://github.com/google/osv-scanner) | 2.7.0 | Vulnerable dependencies (CVEs) |
+| IaC | [KICS](https://github.com/Checkmarx/kics) | 2.2.0 | Infrastructure as Code misconfigurations |
 | Secrets | [Gitleaks](https://github.com/gitleaks/gitleaks) | 8.30.1 | Hardcoded secrets and credentials |
 
 ---
@@ -23,7 +23,8 @@ A unified command-line interface for running security scans on codebases. Gerion
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
-- Linux x86_64 (scanner binaries are fetched for this platform)
+- Linux or macOS, x86_64 or arm64 (scanner binaries are downloaded for your platform and verified against pinned SHA-256 checksums)
+- [Go](https://go.dev/doc/install) 1.26.2+ to build KICS from source (it publishes no prebuilt binaries)
 
 ---
 
@@ -57,7 +58,7 @@ make clean                # Uninstall everything and remove the virtual environm
 
 ### With Docker
 
-The Docker image bundles all scanner binaries and the CLI in a single image. No local installation required.
+The Docker image bundles all scanner binaries and the CLI in a single image (linux/amd64 and linux/arm64). No local installation required. The CLI is installed as a regular Python package, and every downloaded scanner binary is verified against a pinned SHA-256 at build time.
 
 ```sh
 docker build -t gerion-cli .
