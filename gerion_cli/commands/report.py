@@ -5,6 +5,7 @@ import httpx
 import typer
 from fpdf.enums import XPos, YPos
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from gerion_cli.api.auth import authenticate_with_api
@@ -154,7 +155,9 @@ def report(
         raise typer.Abort()
 
 def display_text_report(findings, repo, branch, include_description, include_mitigation, active_only):
-    table = Table(title=f"Security Findings: {repo} ({branch})")
+    # Every value below comes from scanned repos via the API: escape it so it is
+    # never interpreted as Rich markup.
+    table = Table(title=f"Security Findings: {escape(str(repo))} ({escape(str(branch))})")
     table.add_column("ID", style="dim")
     if not active_only:
         table.add_column("Status")
@@ -172,28 +175,28 @@ def display_text_report(findings, repo, branch, include_description, include_mit
     }
 
     for f in findings:
-        sev = f.get("severity", "UNKNOWN").upper()
+        sev = str(f.get("severity") or "UNKNOWN").upper()
         color = severity_colors.get(sev, "white")
 
-        row_data = [f.get("finding_id", "N/A")]
+        row_data = [escape(str(f.get("finding_id", "N/A")))]
         if not active_only:
             status = f.get("status", "Active")
             s_color = "green" if status == "Active" else "yellow" if status == "Mitigated" else "blue"
-            row_data.append(f"[{s_color}]{status}[/{s_color}]")
+            row_data.append(f"[{s_color}]{escape(str(status))}[/{s_color}]")
 
         row_data.extend([
-            f"[{color}]{sev}[/{color}]",
-            f.get("scan_type", "N/A"),
-            f.get("title", "N/A"),
-            f"{f.get('file_path', 'N/A')}:{f.get('line_number', '')}"
+            f"[{color}]{escape(sev)}[/{color}]",
+            escape(str(f.get("scan_type", "N/A"))),
+            escape(str(f.get("title", "N/A"))),
+            escape(f"{f.get('file_path', 'N/A')}:{f.get('line_number', '')}")
         ])
 
         table.add_row(*row_data)
         n_prefix = len(row_data) - 2
         if include_description and f.get("description"):
-            table.add_row(*[""] * n_prefix, f"[dim]{f.get('description')}[/dim]", "")
+            table.add_row(*[""] * n_prefix, f"[dim]{escape(str(f.get('description')))}[/dim]", "")
         if include_mitigation and f.get("mitigation"):
-            table.add_row(*[""] * n_prefix, f"[green]Mitigation: {f.get('mitigation')}[/green]", "")
+            table.add_row(*[""] * n_prefix, f"[green]Mitigation: {escape(str(f.get('mitigation')))}[/green]", "")
 
     console.print(table)
     info(f"Total Findings: {len(findings)}")

@@ -3,11 +3,18 @@ Console table functionality for Gerion CLI.
 """
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from gerion_cli.core.logging import success
 
 console = Console()
+
+
+def _cell(value) -> str:
+    """Cell text from scanned repos or scanner output: escaped so it is never parsed as Rich markup."""
+    return escape(str(value))
+
 
 def findings_table(findings: list[dict], scan_type: str = "Security"):
     """
@@ -25,7 +32,7 @@ def findings_table(findings: list[dict], scan_type: str = "Security"):
     severity_order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Info": 4}
 
     def sort_key(finding):
-        severity = finding.get('severity', 'Info')
+        severity = finding.get('severity') or 'Info'
         # Normalize severity to handle case variations
         severity_normalized = severity.capitalize()
         return severity_order.get(severity_normalized, 5)
@@ -47,7 +54,7 @@ def findings_table(findings: list[dict], scan_type: str = "Security"):
         table.add_column("File:Line", style="cyan")
 
         for finding in sorted_findings:
-            severity = finding.get('severity', 'Info')
+            severity = finding.get('severity') or 'Info'
             # Normalize severity for consistent display
             severity_normalized = severity.capitalize()
             severity_color = {
@@ -59,14 +66,14 @@ def findings_table(findings: list[dict], scan_type: str = "Security"):
             }.get(severity_normalized, 'white')
 
             row = [
-                f"[{severity_color}]{severity_normalized}[/{severity_color}]"
+                f"[{severity_color}]{_cell(severity_normalized)}[/{severity_color}]"
             ]
             if has_premium:
-                row.append(str(finding.get('confidence') or 'N/A'))
+                row.append(_cell(finding.get('confidence') or 'N/A'))
 
             row.extend([
-                finding.get('title', 'N/A'),
-                f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}"
+                _cell(finding.get('title', 'N/A')),
+                _cell(f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}")
             ])
             table.add_row(*row)
     elif scan_type == "SAST":
@@ -83,7 +90,7 @@ def findings_table(findings: list[dict], scan_type: str = "Security"):
         table.add_column("File:Line", style="cyan")
 
         for finding in sorted_findings:
-            severity = finding.get('severity', 'Info')
+            severity = finding.get('severity') or 'Info'
             severity_normalized = severity.capitalize()
             severity_color = {
                 'Critical': 'bright_black',
@@ -94,16 +101,16 @@ def findings_table(findings: list[dict], scan_type: str = "Security"):
             }.get(severity_normalized, 'white')
 
             row = [
-                f"[{severity_color}]{severity_normalized}[/{severity_color}]"
+                f"[{severity_color}]{_cell(severity_normalized)}[/{severity_color}]"
             ]
             if has_premium:
-                row.append(str(finding.get('risk_score', 'N/A')))
-                row.append(str(finding.get('reachability', 'N/A')))
-                row.append(str(finding.get('confidence', 'N/A')))
+                row.append(_cell(finding.get('risk_score', 'N/A')))
+                row.append(_cell(finding.get('reachability', 'N/A')))
+                row.append(_cell(finding.get('confidence', 'N/A')))
 
             row.extend([
-                finding.get('title', 'N/A'), # Rule ID is title
-                f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}"
+                _cell(finding.get('title', 'N/A')), # Rule ID is title
+                _cell(f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}")
             ])
             table.add_row(*row)
     elif scan_type == "IaC":
@@ -112,7 +119,7 @@ def findings_table(findings: list[dict], scan_type: str = "Security"):
         table.add_column("File:Line", style="cyan")
         table.add_column("Status", style="magenta")
         for finding in sorted_findings:
-            severity = finding.get('severity', 'Info')
+            severity = finding.get('severity') or 'Info'
             severity_normalized = severity.capitalize()
             severity_color = {
                 'Critical': 'bright_black',
@@ -122,10 +129,10 @@ def findings_table(findings: list[dict], scan_type: str = "Security"):
                 'Info': 'blue'
             }.get(severity_normalized, 'white')
             table.add_row(
-                f"[{severity_color}]{severity_normalized}[/{severity_color}]",
-                finding.get('title', 'N/A'),
-                f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}",
-                finding.get('mitigation', 'N/A')[:40]  # Show first 40 chars of mitigation/status
+                f"[{severity_color}]{_cell(severity_normalized)}[/{severity_color}]",
+                _cell(finding.get('title', 'N/A')),
+                _cell(f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}"),
+                _cell((finding.get('mitigation') or 'N/A')[:40])  # Show first 40 chars of mitigation/status
             )
     else:  # SCA
         has_premium = any(f.get('reachability') for f in findings)
@@ -140,7 +147,7 @@ def findings_table(findings: list[dict], scan_type: str = "Security"):
         table.add_column("File", style="cyan")
 
         for finding in sorted_findings:
-            severity = finding.get('severity', 'Info')
+            severity = finding.get('severity') or 'Info'
             severity_normalized = severity.capitalize()
             severity_color = {
                 'Critical': 'bright_black',
@@ -166,18 +173,18 @@ def findings_table(findings: list[dict], scan_type: str = "Security"):
             fix_display = finding.get('component_fix') or 'No fix'
 
             row = [
-                f"[{severity_color}]{severity_normalized}[/{severity_color}]"
+                f"[{severity_color}]{_cell(severity_normalized)}[/{severity_color}]"
             ]
             if has_premium:
-                risk_score = str(finding.get('risk_score') or 'N/A')
-                reachability = str(finding.get('reachability') or 'N/A')
+                risk_score = _cell(finding.get('risk_score') or 'N/A')
+                reachability = _cell(finding.get('reachability') or 'N/A')
                 row.extend([risk_score, reachability])
 
             row.extend([
-                cve_display,
-                component,
-                fix_display,
-                finding.get('file_path', 'N/A')
+                _cell(cve_display),
+                _cell(component),
+                _cell(fix_display),
+                _cell(finding.get('file_path', 'N/A'))
             ])
 
             table.add_row(*row)
