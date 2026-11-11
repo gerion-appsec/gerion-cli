@@ -17,7 +17,7 @@ def test_parse_secrets_gitleaks(load_fixture, mock_metadata):
     f = findings[0]
 
     assert f["scan_type"] == "Secrets"
-    assert f["severity"] == "High"
+    assert f["severity"] == "HIGH"
     assert "Hard coded secret" in f["title"]
     assert f["file_path"] == "appsettings.json"
     assert f["finding_id"] is not None

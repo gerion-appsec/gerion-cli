@@ -8,7 +8,7 @@ from functools import cmp_to_key, lru_cache
 
 from packaging.version import InvalidVersion, Version
 
-secrets_severity = 'High'
+secrets_severity = 'HIGH'
 
 # Premium features are now handled via entry_points (FindingEnricher).
 
