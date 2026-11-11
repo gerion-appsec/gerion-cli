@@ -172,10 +172,12 @@ uv run gerion report [PATH] [OPTIONS]
 
 ```yaml
 - name: Gerion security scan
+  env:
+    GERION_API_URL: ${{ secrets.GERION_API_URL }}
+    GERION_API_KEY: ${{ secrets.GERION_API_KEY }}
   run: |
     docker run --rm -v "$PWD:/code" \
-      -e GERION_API_URL=${{ secrets.GERION_API_URL }} \
-      -e GERION_API_KEY=${{ secrets.GERION_API_KEY }} \
+      -e GERION_API_URL -e GERION_API_KEY \
       gerion-cli scan-all /code
 ```
 
@@ -185,8 +187,11 @@ uv run gerion report [PATH] [OPTIONS]
 gerion-scan:
   image: gerion-cli:latest
   script:
-    - gerion scan-all . --api-url $GERION_API_URL --api-key $GERION_API_KEY
+    # GERION_API_URL and GERION_API_KEY are read from the CI/CD variables
+    - gerion scan-all .
 ```
+
+Prefer passing the API key through the `GERION_API_KEY` environment variable rather than `--api-key`: command-line arguments are visible to other processes on the machine.
 
 Scan results include full Git metadata (repository, branch, commit hash, author, build ID) sourced from environment variables or the local Git repository.
 
