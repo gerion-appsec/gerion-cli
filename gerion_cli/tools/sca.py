@@ -23,12 +23,12 @@ def run_sca_tool(code_path, timeout=180):
     tool_timeout = max(1, timeout - 10)  # noqa: F841
 
     # OSV-Scanner command
-    # Usage: osv-scanner scan --format json --output <file> <path>
+    # Usage: osv-scanner scan --format json --output-file <file> <path>
     command = [
         "osv-scanner", "scan",
         "--no-resolve",
         "--format", "json",
-        "--output", report_path,
+        "--output-file", report_path,
         "-r", # Recursive scan
         code_path
     ]
