@@ -1,7 +1,7 @@
 import typer
 
-from gerion_cli.commands.base import run_scan
-from gerion_cli.core import CLIENT_ID, LogLevel, OutputFormat
+from gerion_cli.commands.base import FAIL_ON_OPTION, run_scan
+from gerion_cli.core import CLIENT_ID, FailOn, LogLevel, OutputFormat
 from gerion_cli.tools import parse_iac_tool_output, run_iac_tool
 
 
@@ -14,6 +14,7 @@ def iac_scan(
     format: OutputFormat = typer.Option(None, "--format", "-f", help="Output format for file saving or stdout (json, markdown, sarif)"),
     timeout: int = typer.Option(180, "--timeout", "-t", help="Tool execution timeout in seconds"),
     queries_path: str = typer.Option(None, "--queries-path", "-q", help="Path to KICS queries directory (for non-standard installations)"),
+    fail_on: FailOn = FAIL_ON_OPTION,
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
@@ -52,5 +53,6 @@ def iac_scan(
         format=format,
         timeout=timeout,
         log_level=log_level,
+        fail_on=fail_on,
         queries_path=queries_path
     )

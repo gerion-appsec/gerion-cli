@@ -4,9 +4,17 @@ from typing import Any
 
 import typer
 
-from gerion_cli.commands.base import build_results, dispatch_results, execute_tool, write_output_file
+from gerion_cli.commands.base import (
+    FAIL_ON_OPTION,
+    build_results,
+    dispatch_results,
+    enforce_fail_on,
+    execute_tool,
+    write_output_file,
+)
 from gerion_cli.core import (
     CLIENT_ID,
+    FailOn,
     LogLevel,
     OutputFormat,
     SecretString,
@@ -45,6 +53,7 @@ def scan_all(
     format: OutputFormat = typer.Option(None, "--format", "-f", help="Output format for file saving or stdout (json, markdown, sarif)"),
     timeout: int = typer.Option(180, "--timeout", "-t", help="Tool execution timeout in seconds (per scan)"),
     sequential: bool = typer.Option(False, "--sequential", help="Run the scanners one after another instead of in parallel (lower peak CPU and memory)"),
+    fail_on: FailOn = FAIL_ON_OPTION,
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
@@ -55,6 +64,7 @@ def scan_all(
     When --output-file is provided, all findings are aggregated into a single file.
     When sending to API, each scan submits independently.
     Every scan runs (and uploads) even if another one fails; the command then exits with code 1.
+    With --fail-on, it exits with code 2 if any finding of the completed scans meets the threshold.
 
     Examples:
         # Scan current directory with all tools
@@ -133,6 +143,7 @@ def scan_all(
         error(f"Uploading the results of {', '.join(upload_failed)} to the API failed; they were not stored.")
     if failed or upload_failed:
         raise typer.Exit(1)
+    enforce_fail_on(all_findings, fail_on)
 
 
 def _run_scanner(config: dict[str, Any], code_path: str, timeout: int) -> tuple[Any, float] | Exception:

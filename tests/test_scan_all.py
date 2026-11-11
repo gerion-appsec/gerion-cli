@@ -40,7 +40,7 @@ def test_scan_all_runs_every_scan_and_exits_1(tmp_path, monkeypatch):
     with pytest.raises(typer.Exit) as exc_info:
         scan_all_module.scan_all(
             code_path=".", api_url=None, client_id=None, api_key=None,
-            output_file=str(output_file), format=None, timeout=5, sequential=False, log_level="info",
+            output_file=str(output_file), format=None, timeout=5, sequential=False, log_level="info", fail_on=None,
         )
 
     assert exc_info.value.exit_code == 1
@@ -79,7 +79,7 @@ def test_scan_all_parallel_keeps_fixed_order_and_wall_clock_duration(tmp_path, m
 
     scan_all_module.scan_all(
         code_path=str(tmp_path), api_url=None, client_id=None, api_key=None,
-        output_file=str(output_file), format=None, timeout=5, sequential=sequential, log_level="info",
+        output_file=str(output_file), format=None, timeout=5, sequential=sequential, log_level="info", fail_on=None,
     )
 
     data = json.loads(output_file.read_text())
@@ -103,7 +103,7 @@ def test_scan_all_keeps_each_scan_duration(monkeypatch, tmp_path):
 
     scan_all_module.scan_all(
         code_path=str(tmp_path), api_url=None, client_id=None, api_key=None,
-        output_file=str(tmp_path / "all.json"), format=None, timeout=5, sequential=False, log_level="info",
+        output_file=str(tmp_path / "all.json"), format=None, timeout=5, sequential=False, log_level="info", fail_on=None,
     )
 
     durations = {metadata["scan_type"]: metadata["scan_duration"] for metadata in built}
