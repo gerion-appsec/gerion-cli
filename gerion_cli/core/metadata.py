@@ -1,45 +1,64 @@
 """
 Metadata handling for Gerion CLI.
 """
+import json
 import os
-import git
+import subprocess
 from pathlib import Path
+
+from gerion_cli.core.logging import debug, warning
+
+GIT_TIMEOUT = 10
+# Never prompt for credentials and never take optional locks (no index refresh) in
+# the scanned repository. GIT_DIR/GIT_WORK_TREE (set e.g. inside git hooks) would
+# make git ignore the -C directory.
+_GIT_ENV_DROP = ("GIT_DIR", "GIT_WORK_TREE")
+
+
+def _git(cwd, *args: str) -> str | None:
+    """
+    Run a read-only git command in `cwd` and return its stripped stdout, or None if
+    git is not installed, fails, or times out.
+    """
+    env = {k: v for k, v in os.environ.items() if k not in _GIT_ENV_DROP}
+    env.update(GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0")
+    try:
+        process = subprocess.run(
+            ["git", "-C", str(cwd), *args],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            env=env,
+            timeout=GIT_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        debug(f"git {args[0]} failed: {e}")
+        return None
+    if process.returncode != 0:
+        return None
+    return process.stdout.strip()
+
+
+def _git_toplevel(path: Path) -> str | None:
+    """Top-level directory of the work tree containing `path`, or None."""
+    return _git(path, "rev-parse", "--show-toplevel") or None
+
 
 def find_git_repo(path):
     """
     Find the Git repository root starting from the given path.
-    Only checks the provided path itself and its immediate parent (1 level up max).
-    This prevents searching indefinitely up the directory tree.
-    Uses GitPython's search_parent_directories functionality in a controlled way.
+    Only the provided path itself and its immediate parent (1 level up max) are
+    accepted as the root, so an unrelated repository further up the tree (e.g. the
+    user's home directory) is never used.
     """
     path = Path(path).resolve()
-    
-    # Try to find repo starting from the provided path
-    # GitPython will search up from this path, but we limit it by only checking
-    # the path itself and its immediate parent
-    try:
-        # First try with search_parent_directories=True on the path itself
-        # This will find the repo if path is inside a repo
-        repo = git.Repo(str(path), search_parent_directories=True)
-        repo_dir = repo.working_dir
-        
-        # Verify that the found repo is within reasonable distance (path or parent)
-        repo_path = Path(repo_dir).resolve()
+    toplevel = _git_toplevel(path if path.is_dir() else path.parent)
+    if toplevel:
+        repo_path = Path(toplevel).resolve()
         if repo_path == path or repo_path == path.parent:
-            return repo_dir
-        # If repo is further up, don't use it (we only want 1 level up max)
-    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
-        pass
-    
-    # If not found, try the parent directory directly
-    parent = path.parent
-    if parent != path:  # parent != path means not at root
-        try:
-            repo = git.Repo(str(parent), search_parent_directories=False)
-            return repo.working_dir
-        except (git.InvalidGitRepositoryError, git.NoSuchPathError):
-            pass
-    
+            return toplevel
     return None
 
 def _detect_cicd_platform():
@@ -74,6 +93,40 @@ def _extract_repo_name_from_url(url: str) -> str:
     return segments[-1] if segments else url
 
 
+def _update_non_empty(metadata: dict, values: dict) -> None:
+    """Override metadata fields only with non-empty values, so a missing CI variable
+    keeps the git-derived or default value instead of becoming None."""
+    metadata.update({key: value for key, value in values.items() if value})
+
+
+def _github_commit_sha() -> str | None:
+    """
+    Commit being scanned on GitHub Actions: the PR head SHA for pull_request events
+    (GITHUB_SHA is the synthetic merge commit there), else GITHUB_SHA, else
+    GITHUB_WORKFLOW_SHA. The event file is optional; any problem reading it is ignored.
+    """
+    if os.getenv("GITHUB_EVENT_NAME", "").startswith("pull_request"):
+        event_path = os.getenv("GITHUB_EVENT_PATH")
+        if event_path:
+            try:
+                with open(event_path, encoding="utf-8") as event_file:
+                    head_sha = json.load(event_file)["pull_request"]["head"]["sha"]
+                if isinstance(head_sha, str) and head_sha:
+                    return head_sha
+            except (OSError, ValueError, KeyError, TypeError):
+                debug("GitHub event file unreadable or without a PR head SHA.")
+    return os.getenv("GITHUB_SHA") or os.getenv("GITHUB_WORKFLOW_SHA")
+
+
+def _numeric_env(*names: str) -> str | None:
+    """First of the given environment variables whose value is a purely numeric string."""
+    for name in names:
+        value = (os.getenv(name) or "").strip()
+        if value.isascii() and value.isdigit():
+            return value
+    return None
+
+
 def get_metadata(code_path=None):
     """
     Get repository metadata from Git or environment variables.
@@ -82,19 +135,14 @@ def get_metadata(code_path=None):
         code_path: Optional path to the code directory being scanned.
                    If provided, will search for Git repository starting from this path.
     """
-    # Determine the base path for metadata collection
+    # Determine the repository root: metadata is only read from a repository whose
+    # root is the scanned path or its parent (or the current directory itself).
     if code_path:
-        # Use the provided code_path, resolve to absolute path
-        base_path = Path(code_path).resolve()
-        # Find the Git repository root (might be a parent directory)
-        git_repo_path = find_git_repo(base_path)
-        if git_repo_path:
-            repo_path = git_repo_path
-        else:
-            repo_path = str(base_path)
+        repo_root = find_git_repo(Path(code_path).resolve())
     else:
-        # Fallback to current working directory
-        repo_path = os.getcwd()
+        cwd = os.getcwd()
+        toplevel = _git_toplevel(Path(cwd))
+        repo_root = toplevel if toplevel and Path(toplevel).resolve() == Path(cwd).resolve() else None
 
     metadata = {
         "repository_name": "local",
@@ -105,60 +153,39 @@ def get_metadata(code_path=None):
         "commit_author": None,
         "cicd_platform": _detect_cicd_platform(),
     }
-    
-    # Try to detect Git repository
-    # Use search_parent_directories=False to prevent searching up indefinitely
-    try:
-        repo = git.Repo(repo_path, search_parent_directories=False)
-        commit = repo.head.commit
-        
-        # Extract repository name from remote origin
-        repo_name = "local"
-        try:
-            origin_url = repo.remotes.origin.url
-            if origin_url:
-                # Remove .git extension if present
-                clean_url = origin_url
-                if clean_url.endswith('.git'):
-                    clean_url = clean_url[:-4]
-                
-                # Handle SSH URLs (git@domain:path)
-                if clean_url.startswith('git@'):
-                    parts = clean_url.split(':')
-                    if len(parts) >= 2:
-                        path_parts = [part for part in parts[1].split('/') if part]
-                        if path_parts:
-                            repo_name = path_parts[-1]
-                else:
-                    # Handle HTTPS URLs
-                    parts = [part for part in clean_url.split('/') if part]
-                    if parts:
-                        repo_name = parts[-1]
-        except Exception:
-            repo_name = os.path.basename(repo.working_dir)
-        
-        # Use the code_path if provided, otherwise use repo working dir
-        final_code_path = str(code_path) if code_path else repo.working_dir
-        
+
+    # Fails in a repository without commits: keep the defaults.
+    head = _git(repo_root, "log", "-1", "--no-show-signature", "--format=%H%n%an", "HEAD") if repo_root else None
+    if head:
+        commit_hash, _, commit_author = head.partition("\n")
+        # No origin remote: fall back to the directory name.
+        origin_url = _git(repo_root, "config", "--get", "remote.origin.url")
+        repo_name = _extract_repo_name_from_url(origin_url) if origin_url else os.path.basename(repo_root)
+
         metadata.update({
             "repository_name": repo_name,
-            "branch_name": repo.active_branch.name,
             "build_id": "0",
-            "code_path": final_code_path,
-            "commit_hash": commit.hexsha,
-            "commit_author": commit.author.name
+            # Use the code_path if provided, otherwise use the repository root
+            "code_path": str(code_path) if code_path else repo_root,
+            "commit_hash": commit_hash,
+            "commit_author": commit_author,
         })
-    except Exception:
-        pass
+        # A detached HEAD (git checkout <sha>, the norm on most CI systems) has no
+        # branch: keep the default instead of losing the rest of the metadata.
+        branch = _git(repo_root, "symbolic-ref", "--short", "-q", "HEAD")
+        if branch:
+            metadata["branch_name"] = branch
+    else:
+        debug("Git metadata unavailable: not a repository, a repository without commits, or git is not installed.")
 
     # Override with CI/CD environment variables
     if os.getenv("GITHUB_SERVER_URL"):
-        metadata.update({
+        _update_non_empty(metadata, {
             "repository_name": os.getenv("GITHUB_REPOSITORY"),
             "branch_name": os.getenv("GITHUB_HEAD_REF") or os.getenv("GITHUB_REF_NAME"),
-            "build_id": os.getenv("GITHUB_RUN_ATTEMPT"),
+            "build_id": _numeric_env("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"),
             "code_path": os.getenv("GITHUB_WORKSPACE"),
-            "commit_hash": os.getenv("GITHUB_WORKFLOW_SHA"),
+            "commit_hash": _github_commit_sha(),
             "commit_author": os.getenv("GITHUB_ACTOR")
         })
 
@@ -168,27 +195,28 @@ def get_metadata(code_path=None):
         branch_name = raw_branch[len("origin/"):] if raw_branch.startswith("origin/") else raw_branch
 
         # Jenkins sets GIT_URL to the full remote URL — extract the short repo name.
-        repo_name = _extract_repo_name_from_url(os.getenv("GIT_URL", "")) or "local"
+        git_url = os.getenv("GIT_URL")
+        repo_name = _extract_repo_name_from_url(git_url) if git_url else None
 
-        metadata.update({
+        _update_non_empty(metadata, {
             "repository_name": repo_name,
             "branch_name": branch_name,
-            "build_id": os.getenv("BUILD_NUMBER"),
+            "build_id": _numeric_env("BUILD_NUMBER"),
             "code_path": os.getenv("WORKSPACE"),
             "commit_hash": os.getenv("GIT_COMMIT"),
             "commit_author": os.getenv("GIT_COMMITTER_NAME"),
         })
-    
+
     if os.getenv("GITLAB_CI"):
-        metadata.update({
+        _update_non_empty(metadata, {
             "repository_name": os.getenv("CI_PROJECT_NAME"),
             "branch_name": os.getenv("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME") or os.getenv("CI_COMMIT_REF_NAME"),
-            "build_id": os.getenv("CI_CONCURRENT_ID"),
-            "code_path": os.getenv("CI_BUILDS_DIR"),
+            "build_id": _numeric_env("CI_PIPELINE_ID", "CI_JOB_ID", "CI_CONCURRENT_ID"),
+            "code_path": os.getenv("CI_PROJECT_DIR") or os.getenv("CI_BUILDS_DIR"),
             "commit_hash": os.getenv("CI_COMMIT_SHA"),
             "commit_author": os.getenv("CI_COMMIT_AUTHOR")
         })
-    
+
     # Override with manual environment variables
     manual_updates = {}
     if os.getenv("GERION_REPO_NAME"):
@@ -199,8 +227,13 @@ def get_metadata(code_path=None):
         manual_updates["commit_hash"] = os.getenv("GERION_COMMIT_HASH")
     if os.getenv("GERION_BUILD_ID"):
         manual_updates["build_id"] = os.getenv("GERION_BUILD_ID")
-    
+        if not manual_updates["build_id"].strip().isdigit():
+            warning(
+                f"GERION_BUILD_ID '{manual_updates['build_id']}' is not numeric: "
+                "the API expects a numeric build id and may reject or mishandle the upload."
+            )
+
     if manual_updates:
         metadata.update(manual_updates)
-    
-    return metadata 
+
+    return metadata

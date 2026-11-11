@@ -1,5 +1,5 @@
 """Plugin contract for findings enrichment."""
-from typing import Any, Protocol, List, Dict, Optional
+from typing import Any, Protocol
 
 
 class FindingsEnricher(Protocol):
@@ -10,11 +10,11 @@ class FindingsEnricher(Protocol):
 
     def enrich(
         self,
-        findings: List[Dict[str, Any]],
+        findings: list[dict[str, Any]],
         code_path: str,
         scanner: str,
         raw_output: Any = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Enrich normalized findings with premium data.
 
         Args:

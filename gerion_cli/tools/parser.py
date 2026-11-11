@@ -4,8 +4,11 @@ Parsing functionality for security tool outputs.
 import hashlib
 import re
 from datetime import datetime
+from functools import cmp_to_key, lru_cache
 
-secrets_severity = 'High'
+from packaging.version import InvalidVersion, Version
+
+secrets_severity = 'HIGH'
 
 # Premium features are now handled via entry_points (FindingEnricher).
 
@@ -48,37 +51,40 @@ def generate_finding_template(metadata):
 def generate_unique_id(strings):
     # Concatenate all strings in the list
     concatenated_string = ''.join(strings)
-    
+
     # Encode the concatenated string to bytes (required for hashing)
     encoded_string = concatenated_string.encode('utf-8')
-    
+
     # Create a SHA-256 hash object
     sha256_hash = hashlib.sha256()
-    
+
     # Update the hash object with the encoded string
     sha256_hash.update(encoded_string)
-    
+
     # Get the hexadecimal representation of the hash and truncate it to 8 characters
     truncated_hash_hex = sha256_hash.hexdigest()[:12]
-    
+
     return truncated_hash_hex
 
-def redact_text(text, visible_percent=0.3):
+REDACTED = "[REDACTED]"
+MAX_VISIBLE_PER_SIDE = 4
+
+
+def redact_text(text, visible_percent=0.25):
     """
-    Redacts the middle part of a string, keeping a percentage visible at start and end.
-    Total visible is visible_percent of the length.
+    Redacts a secret for display, keeping a hint of its start and end.
+
+    At most visible_percent of the value is revealed in total, and never more than
+    MAX_VISIBLE_PER_SIDE characters per side; values too short for that are fully masked.
     """
-    if not text or len(text) < 4:
+    if not text:
         return text
-        
-    length = len(text)
-    visible_len = int(length * visible_percent)
-    if visible_len < 2: visible_len = 2 # Keep at least 1 char on each side if possible
-    
-    # Split visible length between start and end
-    side_len = visible_len // 2
-    
-    return f"{text[:side_len]}...[REDACTED]...{text[-side_len:]}"
+
+    side_len = min(MAX_VISIBLE_PER_SIDE, int(len(text) * visible_percent) // 2)
+    if side_len < 1:
+        return REDACTED
+
+    return f"{text[:side_len]}...{REDACTED}...{text[-side_len:]}"
 
 SEVERITY_RANK = {
     'CRITICAL': 4,
@@ -100,33 +106,73 @@ def _resolve_severity(severity_raw: str) -> str:
     return severity_map.get((severity_raw or '').upper(), 'LOW')
 
 
-def _extract_fixed_version(vuln: dict, pkg_name: str, pkg_ecosystem: str) -> str | None:
-    matched_affected = None
+# GIT ranges carry commit hashes as "fixed" events, which are not versions.
+_VERSION_RANGE_TYPES = ('ECOSYSTEM', 'SEMVER')
+_NUMERIC_VERSION_PREFIX = re.compile(r'\d+(?:\.\d+)*')
+
+
+def _normalize_version(version: str) -> str:
+    version = str(version).strip()
+    if version[:1] in ('v', 'V') and version[1:2].isdigit():
+        return version[1:]
+    return version
+
+
+def _numeric_version(version: str) -> tuple[int, ...] | None:
+    match = _NUMERIC_VERSION_PREFIX.match(version)
+    return tuple(int(part) for part in match.group().split('.')) if match else None
+
+
+# Advisories repeat the same few versions many times: cache the parsed comparisons.
+@lru_cache(maxsize=4096)
+def compare_versions(a: str, b: str) -> int | None:
+    """
+    Compare two versions from any ecosystem: -1, 0 or 1, or None if they are not comparable.
+
+    PEP 440 is used when both versions parse (it also understands most SemVer
+    prereleases); otherwise the leading numeric part is compared, so Maven
+    "1.2.3.Final" or Go "v1.2.3" still order sensibly.
+    """
+    a, b = _normalize_version(a), _normalize_version(b)
+    try:
+        va, vb = Version(a), Version(b)
+        return (va > vb) - (va < vb)
+    except InvalidVersion:
+        pass
+    na, nb = _numeric_version(a), _numeric_version(b)
+    if na is None or nb is None:
+        return None
+    width = max(len(na), len(nb))
+    na, nb = na + (0,) * (width - len(na)), nb + (0,) * (width - len(nb))
+    return (na > nb) - (na < nb)
+
+
+_version_sort_key = cmp_to_key(lambda a, b: compare_versions(a, b) or 0)
+
+
+def _applicable_fixed_version(vuln: dict, pkg_name: str, pkg_ecosystem: str, pkg_version: str) -> str | None:
+    """
+    Return the smallest fixed version greater than the installed one.
+
+    Advisories list one affected entry or range per maintained branch (e.g. Django
+    3.2.20 / 4.1.10 / 4.2.3), so every matching entry and range is considered and
+    fixes at or below the installed version (other branches) are ignored.
+    """
+    candidates = []
     for affected in vuln.get('affected', []):
         aff_pkg = affected.get('package', {})
-        if aff_pkg.get('name') == pkg_name:
-            if pkg_ecosystem and aff_pkg.get('ecosystem') and pkg_ecosystem != aff_pkg.get('ecosystem'):
+        if aff_pkg.get('name') != pkg_name:
+            continue
+        if pkg_ecosystem and aff_pkg.get('ecosystem') and pkg_ecosystem != aff_pkg.get('ecosystem'):
+            continue
+        for version_range in affected.get('ranges', []):
+            if version_range.get('type') not in _VERSION_RANGE_TYPES:
                 continue
-            matched_affected = affected
-            break
-
-    if not matched_affected:
-        return None
-
-    def range_priority(r):
-        rtype = r.get('type', '')
-        if rtype == 'ECOSYSTEM':
-            return 0
-        if rtype == 'SEMVER':
-            return 1
-        return 2
-
-    sorted_ranges = sorted(matched_affected.get('ranges', []), key=range_priority)
-    for r in sorted_ranges:
-        for event in r.get('events', []):
-            if 'fixed' in event:
-                return event['fixed']
-    return None
+            for event in version_range.get('events', []):
+                fixed = event.get('fixed')
+                if fixed and (compare_versions(fixed, pkg_version) or 0) > 0:
+                    candidates.append(fixed)
+    return min(candidates, key=_version_sort_key) if candidates else None
 
 
 def _extract_severity_for_vuln(vuln: dict, pkg_name: str, pkg_ecosystem: str) -> str:
@@ -155,7 +201,7 @@ def parse_secrets_tool_output(output, metadata):
 
     Returns:
         A list of dictionaries representing the unique findings.
-    """    
+    """
     results = []
     seen_finding_ids = set()
     for f in output:
@@ -166,14 +212,14 @@ def parse_secrets_tool_output(output, metadata):
         description = f.get('Description') or f.get('description') or 'No description available'
         secret_value = f.get('Secret') or f.get('secret') or f.get('match') or 'unknown'
         start_line = f.get('StartLine') or f.get('start_line') or f.get('line') or 0
-        
-        template = generate_finding_template(metadata)   
+
+        template = generate_finding_template(metadata)
         # CRITICAL: ID must be generated from the RAW secret to ensure deduplication works
         finding_id = str(generate_unique_id([file_path, str(match_text), rule_id]))
-        
+
         # Redact secret for storage/display
         redacted_secret = redact_text(str(secret_value))
-        
+
         # Check if the finding_id has already been processed
         if finding_id not in seen_finding_ids:
             result = {
@@ -192,7 +238,7 @@ def parse_secrets_tool_output(output, metadata):
             final_finding = {**template, **result}
             results.append(final_finding)
             seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
-        
+
     return results
 
 _GHSA_DESCRIPTION_KEYS = ('impact', 'details', 'summary')
@@ -203,12 +249,16 @@ _GHSA_SKIP_KEYS = {
     'remediation', 'suggested fix', 'fix',
 }
 
+_GHSA_HEADING = re.compile(r'^#{1,4}\s+(.+)$')
+_GHSA_ANY_HEADING = re.compile(r'^#{1,4}\s+', re.MULTILINE)
+
+
 def _parse_ghsa_sections(details: str) -> dict:
     """
     Parse ## / ### sections from a GHSA advisory details field.
     Returns dict of {section_title_lower: content} or {} if no sections found.
     """
-    if not details or not re.search(r'^#{1,4}\s+', details, re.MULTILINE):
+    if not details or not _GHSA_ANY_HEADING.search(details):
         return {}
 
     sections = {}
@@ -216,7 +266,8 @@ def _parse_ghsa_sections(details: str) -> dict:
     current_lines = []
 
     for line in details.split('\n'):
-        m = re.match(r'^#{1,4}\s+(.+)$', line)
+        # Only lines starting with '#' can be headings: skip the regex for the rest.
+        m = _GHSA_HEADING.match(line) if line.startswith('#') else None
         if m:
             if current_key is not None:
                 sections[current_key] = '\n'.join(current_lines).strip()
@@ -290,7 +341,8 @@ def parse_sca_tool_output(output, metadata):
             cve_list = []
             cwe_set = set()
             max_severity = 'LOW'
-            fix_versions = []
+            # Applicable fix per (deduplicated) vulnerability id; None = no known fix.
+            fix_by_cve: dict[str, str | None] = {}
             vuln_descriptions = []
             vuln_details = []
 
@@ -309,9 +361,11 @@ def parse_sca_tool_output(output, metadata):
                 if SEVERITY_RANK.get(severity, 0) > SEVERITY_RANK.get(max_severity, 0):
                     max_severity = severity
 
-                fixed = _extract_fixed_version(vuln, pkg_name, pkg_ecosystem)
-                if fixed:
-                    fix_versions.append(fixed)
+                fixed = _applicable_fixed_version(vuln, pkg_name, pkg_ecosystem, pkg_version)
+                # Aliased records (PYSEC + GHSA) count once; keep a fix if any of them has one.
+                known = fix_by_cve.get(cve)
+                if known is None or (fixed and compare_versions(fixed, known) == 1):
+                    fix_by_cve[cve] = fixed
 
                 summary = vuln.get('summary')
                 details = vuln.get('details')
@@ -336,22 +390,10 @@ def parse_sca_tool_output(output, metadata):
                     '_rank': SEVERITY_RANK.get(severity, 0),
                 })
 
-            component_fix = None
-            if fix_versions:
-                try:
-                    from packaging.version import parse as parse_version
-                    component_fix = str(max(fix_versions, key=lambda v: parse_version(v)))
-                except Exception:
-                    component_fix = fix_versions[-1]
-
-            if component_fix:
-                try:
-                    from packaging.version import parse as parse_version
-                    clean_pkg_version = pkg_version.replace('.*', '').replace('*', '')
-                    if parse_version(clean_pkg_version) >= parse_version(component_fix):
-                        continue
-                except Exception:
-                    pass
+            # OSV already decided the package is vulnerable: never drop it here. The
+            # package fix is the version that fixes every vulnerability that has a fix.
+            fix_versions = [fix for fix in fix_by_cve.values() if fix]
+            component_fix = max(fix_versions, key=_version_sort_key) if fix_versions else None
 
             finding_id = str(generate_unique_id([source_path, pkg_name, pkg_version]))
 
@@ -368,7 +410,7 @@ def parse_sca_tool_output(output, metadata):
             )
             description = vuln_descriptions_sorted[0][1] if vuln_descriptions_sorted else f"Vulnerable package: {pkg_name}"
 
-            unfixed_count = len(vulnerabilities) - len(fix_versions)
+            unfixed_count = n_vulns - len(fix_versions)
             if component_fix:
                 if unfixed_count > 0:
                     mitigation_text = (
@@ -414,7 +456,7 @@ def parse_sast_tool_output(output, metadata):
     """
     results = []
     seen_ids = set()
-    
+
     for item in output:
         # Opengrep specific fields
         rule_id = item.get('check_id', 'unknown')
@@ -423,7 +465,7 @@ def parse_sast_tool_output(output, metadata):
         extra = item.get('extra', {})
         message = extra.get('message', 'No description available')
         severity_raw = extra.get('severity', 'UNKNOWN').upper()
-        
+
         # Normalize Severity
         severity_map = {
             'ERROR': 'HIGH',
@@ -434,11 +476,11 @@ def parse_sast_tool_output(output, metadata):
         severity = severity_map.get(severity_raw, 'MEDIUM') # Default to Medium if unknown
         fix = extra.get('fix', None)
         cwe_list = extra.get('metadata', {}).get('cwe', [])
-        if isinstance(cwe_list, str): cwe_list = [cwe_list]
-        
+        if isinstance(cwe_list, str): cwe_list = [cwe_list]  # noqa: E701
+
         # Unique ID
         finding_id = str(generate_unique_id([file_path, str(start_line), rule_id]))
-        
+
         if finding_id not in seen_ids:
             template = generate_finding_template(metadata)
             result = {
@@ -457,9 +499,9 @@ def parse_sast_tool_output(output, metadata):
                 'cwe': cwe_list,
                 'cve': None
             }
-            
+
             final_finding = {**template, **result}
-            
+
             # Preserve reachability if already set by StructuralEngine
             if 'reachability' in item:
                  final_finding['reachability'] = item['reachability']
@@ -467,10 +509,10 @@ def parse_sast_tool_output(output, metadata):
                  final_finding['confidence'] = item['confidence']
             if 'trace' in item:
                  final_finding['trace'] = item['trace']
-            
+
             results.append(final_finding)
             seen_ids.add(finding_id)
-            
+
     return results
 
 def parse_iac_tool_output(output, metadata):
@@ -484,7 +526,7 @@ def parse_iac_tool_output(output, metadata):
     """
     results = []
     seen_finding_ids = set()
-    
+
     for query in output:
         # Query level fields
         query_name = query.get('query_name', 'Unknown Query')
@@ -492,7 +534,7 @@ def parse_iac_tool_output(output, metadata):
         severity_raw = query.get('severity', 'INFO').upper()
         description = query.get('description', 'No description available')
         query_category = query.get('category', 'IaC')
-        
+
         # Map Severity
         severity_map = {
             'CRITICAL': 'CRITICAL',
@@ -503,21 +545,21 @@ def parse_iac_tool_output(output, metadata):
             'TRACE': 'LOW'
         }
         severity = severity_map.get(severity_raw, 'LOW')
-        
+
         # Iterate over files where this query matched
         for f in query.get('files', []):
             file_path = f.get('file_name', 'unknown')
             line = f.get('line', 0)
             issue_type = f.get('issue_type', 'unknown')
             expected_value = f.get('expected_value', 'See documentation')
-            actual_value = f.get('actual_value', 'unknown')
-            
+            actual_value = f.get('actual_value', 'unknown')  # noqa: F841
+
             # Create unique ID
             finding_id = str(generate_unique_id([file_path, query_id, str(line)]))
-            
+
             if finding_id not in seen_finding_ids:
                 template = generate_finding_template(metadata)
-                
+
                 result = {
                     'finding_id': finding_id,
                     'title': query_name,
@@ -534,8 +576,8 @@ def parse_iac_tool_output(output, metadata):
                     'cwe': None, # KICS usually doesn't provide CWE in JSON output directly easily mapping
                     'cve': None
                 }
-                
+
                 results.append({**template, **result})
                 seen_finding_ids.add(finding_id)
-                
-    return results 
+
+    return results

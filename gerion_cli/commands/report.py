@@ -1,22 +1,23 @@
-import typer
-import httpx
-import os
-from typing import Optional
-from enum import Enum
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich import print as rprint
 from datetime import datetime
-from gerion_cli.core.metadata import get_metadata
+from enum import Enum
+
+import typer
+from rich.console import Console
+from rich.markup import escape
+from rich.table import Table
+
 from gerion_cli.core.config import CLIENT_ID
+from gerion_cli.core.logging import LogLevel, debug, error, info, set_log_level, success, warning
+from gerion_cli.core.metadata import get_metadata
 from gerion_cli.core.types import SecretString
-from gerion_cli.core.logging import info, error, warning, success
-from gerion_cli.api.auth import authenticate_with_api
+from gerion_cli.output.formats import markdown_cell
 
 console = Console()
 
-class ReportFormat(str, Enum):
+# Maximum number of findings requested from the API in one report.
+REPORT_LIMIT = 1000
+
+class ReportFormat(str, Enum):  # noqa: UP042
     JSON = "json"
     MARKDOWN = "markdown"
     TEXT = "text"
@@ -24,29 +25,37 @@ class ReportFormat(str, Enum):
 
 def report(
     path: str = typer.Argument(".", help="Path to the code directory", show_default=True),
-    repo: Optional[str] = typer.Option(None, "--repo", "-r", help="Override repository name"),
-    branch: Optional[str] = typer.Option(None, "--branch", "-b", help="Override branch name"),
-    scan_type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by scan type (SAST, SCA, IAC, SECRETS)"),
-    severity: Optional[str] = typer.Option(None, "--severity", "-s", help="Filter by minimum severity (CRITICAL, HIGH, MEDIUM, LOW)"),
+    repo: str | None = typer.Option(None, "--repo", "-r", help="Override repository name"),
+    branch: str | None = typer.Option(None, "--branch", "-b", help="Override branch name"),
+    scan_type: str | None = typer.Option(None, "--type", "-t", help="Filter by scan type (SAST, SCA, IAC, SECRETS)"),
+    severity: str | None = typer.Option(None, "--severity", "-s", help="Filter by minimum severity (CRITICAL, HIGH, MEDIUM, LOW)"),
     format: ReportFormat = typer.Option(ReportFormat.TEXT, "--format", "-f", help="Output format (text, json, markdown, pdf)"),
-    output_file: Optional[str] = typer.Option(None, "--output-file", "-o", help="Output file path"),
-    api_url: Optional[str] = typer.Option(None, "--api-url", "-u", envvar="GERION_API_URL", help="API Gateway URL"),
+    output_file: str | None = typer.Option(None, "--output-file", "-o", help="Output file path"),
+    api_url: str | None = typer.Option(None, "--api-url", "-u", envvar="GERION_API_URL", help="API Gateway URL"),
     client_id: str = typer.Option(None, "--client-id", "-i", envvar="GERION_CLIENT_ID", help=f"Client ID for API authentication (default: {CLIENT_ID})"),
     api_key: str = typer.Option(None, "--api-key", "-k", envvar="GERION_API_KEY", hide_input=True, help="M2M API key for authentication"),
     active_only: bool = typer.Option(True, "--active-only/--all", help="Only show active findings (default) or all including mitigated/FP"),
     include_description: bool = typer.Option(True, "--include-description/--no-description", help="Include finding descriptions (default: True)"),
     include_mitigation: bool = typer.Option(True, "--include-mitigation/--no-mitigation", help="Include remediation/mitigation advice (default: True)"),
+    log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level"),
 ):
     """
     Generate a security report for the current project or specified filters.
     """
+    # Imported here so the other commands do not pay for httpx at startup.
+    import httpx
+
+    from gerion_cli.api.auth import authenticate_with_api
+    from gerion_cli.api.http import HTTP_TIMEOUT, check_api_url, ssl_verify
+
     # 0. Set Effective Context
+    set_log_level(log_level)
 
     effective_api_url = api_url
     if not effective_api_url:
         error("API URL not provided. Please set GERION_API_URL or use --api-url.")
         raise typer.Abort()
-        
+
     effective_client_id = client_id or CLIENT_ID
     api_key_string = SecretString.from_typer_option(api_key)
 
@@ -60,7 +69,7 @@ def report(
 
     with console.status("[bold green]Authenticating..."):
         jwt_token = authenticate_with_api(effective_api_url, effective_client_id, api_key_string)
-    
+
     if not jwt_token:
         # Error message is already printed by authenticate_with_api
         raise typer.Abort()
@@ -68,12 +77,12 @@ def report(
     metadata = get_metadata(code_path=path)
     current_repo = repo or metadata.get("repository_name")
     current_branch = branch or metadata.get("branch_name")
-    
+
     if not current_repo or current_repo == "local":
         warning("Could not detect a git repository. Using 'local' context.")
-    
+
     info(f"Generating report for: {current_repo} ({current_branch})")
-    
+
     # 2. Fetch Findings
     filters = {
         "repository_name": current_repo if current_repo != "local" else None,
@@ -81,40 +90,47 @@ def report(
         "scan_type": scan_type,
         "severity": severity,
         "active_only": active_only,
-        "limit": 1000
+        "limit": REPORT_LIMIT
     }
-    
+
     # Filter out None values
     params = {k: v for k, v in filters.items() if v is not None}
-    
+
     try:
-        with console.status("[bold green]Fetching findings..."):
-            with httpx.Client(verify=os.environ.get('GERION_CA_BUNDLE', True)) as client:
-                response = client.get(
-                    f"{effective_api_url}/api/v1/reporting/findings",
-                    params=params,
-                    headers={"Authorization": f"Bearer {jwt_token}"},
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                findings = response.json()
+        # URL and TLS settings were validated by authenticate_with_api().
+        with (
+            console.status("[bold green]Fetching findings..."),
+            httpx.Client(verify=ssl_verify(), timeout=HTTP_TIMEOUT) as client,
+        ):
+            response = client.get(
+                f"{check_api_url(effective_api_url)}/api/v1/reporting/findings",
+                params=params,
+                headers={"Authorization": f"Bearer {jwt_token}"},
+            )
+            response.raise_for_status()
+            findings = response.json()
     except Exception as e:
         error(f"Error fetching report data: {str(e)}")
-        raise typer.Abort()
+        raise typer.Abort() from None
 
     if not findings:
         warning("No findings found for the specified filters.")
         return
+    if len(findings) >= REPORT_LIMIT:
+        warning(
+            f"The API returned the maximum of {REPORT_LIMIT} findings: the report is probably truncated. "
+            "Narrow it with --type, --severity, --repo or --branch."
+        )
 
     # 3. Sorting
     severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4, "UNKNOWN": 5}
     type_order = {"SAST": 0, "SCA": 1, "IAC": 2, "SECRETS": 3, "CONTAINER": 4, "UNKNOWN": 5}
-    
+
     findings.sort(key=lambda f: (
-        f.get("repository_name", "").lower(),
-        f.get("branch_name", "").lower(),
-        type_order.get(f.get("scan_type", "UNKNOWN").upper(), 5),
-        severity_order.get(f.get("severity", "UNKNOWN").upper(), 5)
+        str(f.get("repository_name") or "").lower(),
+        str(f.get("branch_name") or "").lower(),
+        type_order.get(str(f.get("scan_type") or "UNKNOWN").upper(), 5),
+        severity_order.get(str(f.get("severity") or "UNKNOWN").upper(), 5)
     ))
 
     # 4. Handle Formats
@@ -122,24 +138,22 @@ def report(
         import json
         output_data = json.dumps(findings, indent=2)
         if output_file:
-            with open(output_file, "w") as f:
-                f.write(output_data)
+            _write_report(output_file, output_data)
             success(f"Report saved to {output_file}")
         else:
             print(output_data)
-            
+
     elif format == ReportFormat.TEXT:
         display_text_report(findings, current_repo, current_branch, include_description, include_mitigation, active_only)
-        
+
     elif format == ReportFormat.MARKDOWN:
         md_content = generate_markdown_report(findings, current_repo, current_branch, include_description, include_mitigation, active_only)
         if output_file:
-            with open(output_file, "w") as f:
-                f.write(md_content)
+            _write_report(output_file, md_content)
             success(f"Markdown report saved to {output_file}")
         else:
             print(md_content)
-            
+
     elif format == ReportFormat.PDF:
         if not output_file:
             error("PDF format requires an output file path.")
@@ -151,8 +165,18 @@ def report(
         info("Supported formats are: text, json, markdown, pdf")
         raise typer.Abort()
 
+def _write_report(output_file: str, content: str) -> None:
+    try:
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        error(f"Could not write output file '{output_file}': {e.strerror or e}")
+        raise typer.Abort() from None
+
 def display_text_report(findings, repo, branch, include_description, include_mitigation, active_only):
-    table = Table(title=f"Security Findings: {repo} ({branch})")
+    # Every value below comes from scanned repos via the API: escape it so it is
+    # never interpreted as Rich markup.
+    table = Table(title=f"Security Findings: {escape(str(repo))} ({escape(str(branch))})")
     table.add_column("ID", style="dim")
     if not active_only:
         table.add_column("Status")
@@ -170,44 +194,44 @@ def display_text_report(findings, repo, branch, include_description, include_mit
     }
 
     for f in findings:
-        sev = f.get("severity", "UNKNOWN").upper()
+        sev = str(f.get("severity") or "UNKNOWN").upper()
         color = severity_colors.get(sev, "white")
-        
-        row_data = [f.get("finding_id", "N/A")]
+
+        row_data = [escape(str(f.get("finding_id", "N/A")))]
         if not active_only:
             status = f.get("status", "Active")
             s_color = "green" if status == "Active" else "yellow" if status == "Mitigated" else "blue"
-            row_data.append(f"[{s_color}]{status}[/{s_color}]")
-            
+            row_data.append(f"[{s_color}]{escape(str(status))}[/{s_color}]")
+
         row_data.extend([
-            f"[{color}]{sev}[/{color}]",
-            f.get("scan_type", "N/A"),
-            f.get("title", "N/A"),
-            f"{f.get('file_path', 'N/A')}:{f.get('line_number', '')}"
+            f"[{color}]{escape(sev)}[/{color}]",
+            escape(str(f.get("scan_type", "N/A"))),
+            escape(str(f.get("title", "N/A"))),
+            escape(f"{f.get('file_path', 'N/A')}:{f.get('line_number', '')}")
         ])
-        
+
         table.add_row(*row_data)
         n_prefix = len(row_data) - 2
         if include_description and f.get("description"):
-            table.add_row(*[""] * n_prefix, f"[dim]{f.get('description')}[/dim]", "")
+            table.add_row(*[""] * n_prefix, f"[dim]{escape(str(f.get('description')))}[/dim]", "")
         if include_mitigation and f.get("mitigation"):
-            table.add_row(*[""] * n_prefix, f"[green]Mitigation: {f.get('mitigation')}[/green]", "")
-    
+            table.add_row(*[""] * n_prefix, f"[green]Mitigation: {escape(str(f.get('mitigation')))}[/green]", "")
+
     console.print(table)
     info(f"Total Findings: {len(findings)}")
 
 def generate_markdown_report(findings, repo, branch, include_description, include_mitigation, active_only):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
     headers = ["Severity", "Type", "Title", "Location", "ID"]
     if not active_only:
         headers.insert(0, "Status")
-    
+
     header_row = "| " + " | ".join(headers) + " |"
     separator_row = "| " + " | ".join([":---"] * len(headers)) + " |"
 
     lines = [
-        f"# Gerion Security Report",
+        "# Gerion Security Report",
         f"**Repository:** {repo}  ",
         f"**Branch:** {branch}  ",
         f"**Date:** {now}  ",
@@ -216,25 +240,34 @@ def generate_markdown_report(findings, repo, branch, include_description, includ
         header_row,
         separator_row
     ]
-    
+
     for f in findings:
-        sev = f.get("severity", "UNKNOWN").upper()
-        title = f.get("title", "N/A").replace("|", "\\|")
+        sev = str(f.get("severity") or "UNKNOWN").upper()
+        title = f.get("title") or "N/A"
         file = f"{f.get('file_path', 'N/A')}:{f.get('line_number', '')}"
         fid = f.get("finding_id", "N/A")
-        
-        row = [sev, f.get("scan_type"), title, file, fid]
+
+        row = [sev, f.get("scan_type") or "N/A", title, file, fid]
         if not active_only:
             row.insert(0, f.get("status", "Active"))
-            
-        lines.append("| " + " | ".join(row) + " |")
-        
+
+        lines.append("| " + " | ".join(markdown_cell(cell) for cell in row) + " |")
+
         if include_description and f.get("description"):
             lines.append(f"> **Description:** {f.get('description')}  ")
         if include_mitigation and f.get("mitigation"):
             lines.append(f"> **Mitigation:** {f.get('mitigation')}  ")
-            
+
     return "\n".join(lines)
+
+def severity_stats(findings: list[dict]) -> dict[str, int]:
+    """Findings per severity for the PDF summary grid (one box per key)."""
+    stats = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0, "UNKNOWN": 0}
+    for f in findings:
+        sev = str(f.get("severity") or "UNKNOWN").upper()
+        # Unexpected values would otherwise add extra boxes to the grid
+        stats[sev if sev in stats else "UNKNOWN"] += 1
+    return stats
 
 def generate_pdf_report(findings, repo, branch, output_path, include_description, include_mitigation, active_only):
     import os
@@ -278,9 +311,9 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
             }
         ]
         for family in families:
-            if (os.path.exists(family["regular"]) and 
-                os.path.exists(family["bold"]) and 
-                os.path.exists(family["italic"]) and 
+            if (os.path.exists(family["regular"]) and
+                os.path.exists(family["bold"]) and
+                os.path.exists(family["italic"]) and
                 os.path.exists(family["bold_italic"])):
                 return family
         return None
@@ -316,17 +349,14 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
 
     if not output_path:
         output_path = f"report_{repo}_{branch}_{datetime.now().strftime('%Y%m%d')}.pdf"
-    
+
     try:
+        # fpdf2 pulls in Pillow and fontTools: only load it when a PDF is requested.
         from fpdf import FPDF
-        
+        from fpdf.enums import XPos, YPos
+
         # Calculate summary statistics
-        stats = {
-            "CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0, "UNKNOWN": 0
-        }
-        for f in findings:
-            sev = f.get("severity", "UNKNOWN").upper()
-            stats[sev] = stats.get(sev, 0) + 1
+        stats = severity_stats(findings)
 
         class GerionPDF(FPDF):
             def __init__(self, *args, **kwargs):
@@ -350,10 +380,10 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
                     self.set_xy(26, 11)
                 else:
                     self.set_xy(10, 11)
-                
+
                 self.set_font('helvetica', 'B', 22)
                 self.set_text_color(21, 87, 121) # Gerion Dark Blue (#155779)
-                self.cell(0, 10, 'GERION Security Report', border=0, ln=1, align='L')
+                self.cell(0, 10, 'GERION Security Report', border=0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L')
                 self.set_draw_color(21, 87, 121)
                 self.set_line_width(0.5)
                 self.line(10, 26, 200, 26)
@@ -363,51 +393,51 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
                 self.set_y(-15)
                 self.set_font('helvetica', 'I', 8)
                 self.set_text_color(148, 163, 184) # Slate-400
-                self.cell(0, 10, f'Generated by Gerion Security - Page {self.page_no()}/{{nb}}', 0, 0, 'C')
+                self.cell(0, 10, f'Generated by Gerion Security - Page {self.page_no()}/{{nb}}', 0, align='C')
 
         pdf = GerionPDF()
         pdf.alias_nb_pages()
         pdf.add_page()
-        
+
         # 1. Report Metadata
         pdf.set_fill_color(248, 250, 252) # Slate-50
         pdf.set_draw_color(226, 232, 240) # Slate-200
         pdf.set_font('helvetica', 'B', 11)
         pdf.set_text_color(30, 41, 59) # Slate-800
-        pdf.cell(0, 9, ' Project Information', ln=1, fill=True, border='B')
-        
+        pdf.cell(0, 9, ' Project Information', new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, border='B')
+
         pdf.set_font('helvetica', '', 9)
         pdf.ln(1)
         col_width = 40
-        
+
         pdf.set_font('helvetica', 'B', 9)
         pdf.set_text_color(71, 85, 105) # Slate-600
-        pdf.cell(col_width, 6, ' Repository:', 0, 0)
+        pdf.cell(col_width, 6, ' Repository:', 0)
         pdf.set_font('helvetica', '', 9)
         pdf.set_text_color(51, 65, 85) # Slate-700
-        pdf.cell(0, 6, repo, 0, 1)
-        
+        pdf.cell(0, 6, repo, 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
         pdf.set_font('helvetica', 'B', 9)
         pdf.set_text_color(71, 85, 105)
-        pdf.cell(col_width, 6, ' Branch:', 0, 0)
+        pdf.cell(col_width, 6, ' Branch:', 0)
         pdf.set_font('helvetica', '', 9)
         pdf.set_text_color(51, 65, 85)
-        pdf.cell(0, 6, branch, 0, 1)
-        
+        pdf.cell(0, 6, branch, 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
         pdf.set_font('helvetica', 'B', 9)
         pdf.set_text_color(71, 85, 105)
-        pdf.cell(col_width, 6, ' Execution Date:', 0, 0)
+        pdf.cell(col_width, 6, ' Execution Date:', 0)
         pdf.set_font('helvetica', '', 9)
         pdf.set_text_color(51, 65, 85)
-        pdf.cell(0, 6, datetime.now().strftime("%B %d, %Y %H:%M:%S"), 0, 1)
-        
+        pdf.cell(0, 6, datetime.now().strftime("%B %d, %Y %H:%M:%S"), 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
         pdf.set_font('helvetica', 'B', 9)
         pdf.set_text_color(71, 85, 105)
-        pdf.cell(col_width, 6, ' Report Scope:', 0, 0)
+        pdf.cell(col_width, 6, ' Report Scope:', 0)
         pdf.set_font('helvetica', '', 9)
         pdf.set_text_color(51, 65, 85)
         scope = "Active Findings Only" if active_only else "All Findings (incl. Mitigated/FP)"
-        pdf.cell(0, 6, scope, 0, 1)
+        pdf.cell(0, 6, scope, 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(8)
 
         # 2. Executive Summary
@@ -415,13 +445,13 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
         pdf.set_draw_color(226, 232, 240)
         pdf.set_font('helvetica', 'B', 11)
         pdf.set_text_color(30, 41, 59)
-        pdf.cell(0, 9, ' Findings Summary', ln=1, fill=True, border='B')
+        pdf.cell(0, 9, ' Findings Summary', new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, border='B')
         pdf.ln(4)
-        
+
         # Grid for summary boxes
         spacing = 4
         box_width = (pdf.w - 20 - (spacing * 5)) / 6
-        
+
         # Define colors for boxes
         sev_colors = {
             "CRITICAL": (15, 23, 42), # Dark Slate (900)
@@ -431,27 +461,29 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
             "INFO": (100, 116, 139),  # Gray (500)
             "UNKNOWN": (203, 213, 225) # Slate (300)
         }
-        
+
         for sev, count in stats.items():
-            if sev == "UNKNOWN": continue
-            
+            # The grid has room for six boxes; UNKNOWN is only drawn when used.
+            if sev == "UNKNOWN" and not count:
+                continue
+
             pdf.set_fill_color(*sev_colors.get(sev, (200, 200, 200)))
             pdf.set_text_color(255)
-            
+
             x, y = pdf.get_x(), pdf.get_y()
-            
+
             pdf.set_draw_color(226, 232, 240)
-            pdf.cell(box_width, 14, "", border=1, ln=0, fill=True)
-            
+            pdf.cell(box_width, 14, "", border=1, fill=True)
+
             pdf.set_xy(x, y)
-            
+
             pdf.set_font('helvetica', 'B', 10)
-            pdf.cell(box_width, 7, str(count), border=0, ln=2, align='C')
+            pdf.cell(box_width, 7, str(count), border=0, new_x=XPos.LEFT, new_y=YPos.NEXT, align='C')
             pdf.set_font('helvetica', 'B', 6.5)
-            pdf.cell(box_width, 5, sev, border=0, ln=0, align='C')
-            
+            pdf.cell(box_width, 5, sev, border=0, align='C')
+
             pdf.set_xy(x + box_width + spacing, y)
-        
+
         pdf.ln(20)
 
         # 3. Detailed Findings List
@@ -459,24 +491,24 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
         pdf.set_draw_color(226, 232, 240)
         pdf.set_font('helvetica', 'B', 11)
         pdf.set_text_color(30, 41, 59)
-        pdf.cell(0, 9, ' Detailed Analysis', ln=1, fill=True, border='B')
+        pdf.cell(0, 9, ' Detailed Analysis', new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, border='B')
         pdf.ln(4)
 
         pdf.set_draw_color(226, 232, 240) # soft border
 
         for i, f in enumerate(findings, 1):
             status = f.get("status", "Active")
-            sev = f.get("severity", "UNKNOWN").upper()
+            sev = str(f.get("severity") or "UNKNOWN").upper()
             stype = sanitize_latin1(f.get("scan_type", "N/A"))
             title = sanitize_latin1(f.get("title", "N/A"))
-            fid = f.get("finding_id", "N/A")
+            fid = f.get("finding_id", "N/A")  # noqa: F841
             location = sanitize_latin1(f"{f.get('file_path', 'N/A')}:{f.get('line_number', '')}")
-            
+
             import textwrap
-            
+
             loc_lines = textwrap.wrap(location, width=75, break_long_words=True)
-            if not loc_lines: loc_lines = [""]
-            
+            if not loc_lines: loc_lines = [""]  # noqa: E701
+
             desc_lines = []
             if include_description and f.get("description"):
                 desc_text = sanitize_latin1(f.get("description") or "")
@@ -485,7 +517,7 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
                         desc_lines.append("")
                     else:
                         desc_lines.extend(textwrap.wrap(block, width=75, break_long_words=True))
-                        
+
             mit_lines = []
             if include_mitigation and f.get("mitigation"):
                 mit_text = sanitize_latin1(f.get("mitigation") or "")
@@ -494,7 +526,7 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
                         mit_lines.append("")
                     else:
                         mit_lines.extend(textwrap.wrap(block, width=75, break_long_words=True))
-            
+
             # Height calculation
             card_height = 8 + 7  # Header + Metadata row
             card_height += len(loc_lines) * 5 + 1
@@ -503,7 +535,7 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
             if mit_lines:
                 card_height += len(mit_lines) * 5
             card_height += 5  # closing line + spacing
-            
+
             # Page Break check (if it doesn't fit on page, trigger page break)
             page_top_y = 29.0
             page_bottom_y = 275.0
@@ -516,88 +548,88 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
                 else:
                     if page_bottom_y - pdf.get_y() < 50:
                         pdf.add_page()
-                
+
             # Header of the finding box
             pdf.set_fill_color(248, 250, 252) # Soft Slate-50
             pdf.set_font('helvetica', 'B', 9.5)
             pdf.set_text_color(30, 41, 59) # Slate-800
-            pdf.cell(0, 8, f" Finding #{i}: {title}", ln=1, fill=True, border='TLR')
-            
+            pdf.cell(0, 8, f" Finding #{i}: {title}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True, border='TLR')
+
             # Metadata row inside the box
             pdf.set_text_color(71, 85, 105) # Slate-600
             pdf.set_font('helvetica', 'B', 8)
-            pdf.cell(30, 7, " Severity:", 'L', 0)
-            
+            pdf.cell(30, 7, " Severity:", 'L')
+
             # Severity Indicator
             pdf.set_fill_color(*sev_colors.get(sev, (200, 200, 200)))
             pdf.set_text_color(255)
-            pdf.cell(20, 5, f" {sev} ", border=0, ln=0, align='C', fill=True)
-            
+            pdf.cell(20, 5, f" {sev} ", border=0, align='C', fill=True)
+
             pdf.set_text_color(71, 85, 105)
-            pdf.cell(20, 7, "   Type:", 0, 0)
+            pdf.cell(20, 7, "   Type:", 0)
             pdf.set_font('helvetica', '', 8)
             pdf.set_text_color(51, 65, 85) # Slate-700
-            pdf.cell(30, 7, stype, 0, 0)
-            
+            pdf.cell(30, 7, stype, 0)
+
             if not active_only:
                 pdf.set_font('helvetica', 'B', 8)
                 pdf.set_text_color(71, 85, 105)
-                pdf.cell(20, 7, "  Status:", 0, 0)
+                pdf.cell(20, 7, "  Status:", 0)
                 pdf.set_font('helvetica', '', 8)
                 s_color = (34, 197, 94) if status == "Active" else (234, 179, 8) if status == "Mitigated" else (100, 116, 139)
                 pdf.set_text_color(*s_color)
-                pdf.cell(25, 7, status, 'R', 1)
+                pdf.cell(25, 7, status, 'R', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
                 pdf.set_text_color(51, 65, 85)
             else:
-                pdf.cell(0, 7, "", 'R', 1)
+                pdf.cell(0, 7, "", 'R', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
             # Location row
             pdf.set_font('helvetica', 'B', 8)
             pdf.set_text_color(71, 85, 105)
-            pdf.cell(30, 6, " Location:", 'L', 0)
-            
+            pdf.cell(30, 6, " Location:", 'L')
+
             pdf.set_font('helvetica', '', 7.5)
             pdf.set_text_color(51, 65, 85)
-            pdf.cell(0, 6, loc_lines[0], 'R', 1)
-            
+            pdf.cell(0, 6, loc_lines[0], 'R', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             for line in loc_lines[1:]:
-                pdf.cell(30, 5, "", 'L', 0)
-                pdf.cell(0, 5, line, 'R', 1)
-            
+                pdf.cell(30, 5, "", 'L')
+                pdf.cell(0, 5, line, 'R', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             pdf.set_x(pdf.l_margin)
-            
+
             if include_description and desc_lines:
                 pdf.set_font('helvetica', 'B', 8)
                 pdf.set_text_color(71, 85, 105)
-                pdf.cell(30, 5, " Description:", 'L', 0)
-                
+                pdf.cell(30, 5, " Description:", 'L')
+
                 pdf.set_font('helvetica', '', 8)
                 pdf.set_text_color(51, 65, 85)
-                pdf.cell(0, 5, desc_lines[0], 'R', 1)
-                
+                pdf.cell(0, 5, desc_lines[0], 'R', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
                 for line in desc_lines[1:]:
-                    pdf.cell(30, 5, "", 'L', 0)
-                    pdf.cell(0, 5, line, 'R', 1)
-                
+                    pdf.cell(30, 5, "", 'L')
+                    pdf.cell(0, 5, line, 'R', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
             if include_mitigation and mit_lines:
                 # Soft green background for remediation note box
                 pdf.set_fill_color(240, 253, 244) # Emerald-50
                 pdf.set_text_color(21, 128, 61) # Emerald-700
-                
+
                 pdf.set_font('helvetica', 'B', 8)
-                pdf.cell(30, 5, " Remediation:", 'L', 0, fill=True)
-                
+                pdf.cell(30, 5, " Remediation:", 'L', fill=True)
+
                 pdf.set_font('helvetica', 'I', 8)
-                pdf.cell(0, 5, mit_lines[0], 'R', 1, fill=True)
-                
+                pdf.cell(0, 5, mit_lines[0], 'R', new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+
                 for line in mit_lines[1:]:
-                    pdf.cell(30, 5, "", 'L', 0, fill=True)
-                    pdf.cell(0, 5, line, 'R', 1, fill=True)
-                    
+                    pdf.cell(30, 5, "", 'L', fill=True)
+                    pdf.cell(0, 5, line, 'R', new_x=XPos.LMARGIN, new_y=YPos.NEXT, fill=True)
+
                 pdf.set_text_color(51, 65, 85)
-            
+
             # Close the finding box
-            pdf.cell(0, 2, "", 'T', 1) 
+            pdf.cell(0, 2, "", 'T', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.ln(3)
 
         pdf.output(output_path)
@@ -605,10 +637,10 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
 
     except ImportError:
         error("fpdf2 library not found.")
-        info("Please install it using: poetry add fpdf2")
-        raise typer.Abort()
+        info("Please install it using: uv add fpdf2")
+        raise typer.Abort()  # noqa: B904
     except Exception as e:
         error(f"Error generating PDF report: {str(e)}")
         import traceback
-        traceback.print_exc()
-        raise typer.Abort()
+        debug(traceback.format_exc())
+        raise typer.Abort() from None

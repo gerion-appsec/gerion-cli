@@ -12,9 +12,9 @@ A unified command-line interface for running security scans on codebases. Gerion
 
 | Type | Tool | Version | Detects |
 |------|------|---------|---------|
-| SAST | [Opengrep](https://github.com/opengrep/opengrep) | 1.16.5 | Code vulnerabilities and anti-patterns |
-| SCA | [OSV-Scanner](https://github.com/google/osv-scanner) | 2.3.5 | Vulnerable dependencies (CVEs) |
-| IaC | [KICS](https://github.com/Checkmarx/kics) | 2.1.20 | Infrastructure as Code misconfigurations |
+| SAST | [Opengrep](https://github.com/opengrep/opengrep) | 1.33.1 | Code vulnerabilities and anti-patterns |
+| SCA | [OSV-Scanner](https://github.com/google/osv-scanner) | 2.7.0 | Vulnerable dependencies (CVEs) |
+| IaC | [KICS](https://github.com/Checkmarx/kics) | 2.2.0 | Infrastructure as Code misconfigurations |
 | Secrets | [Gitleaks](https://github.com/gitleaks/gitleaks) | 8.30.1 | Hardcoded secrets and credentials |
 
 ---
@@ -22,8 +22,10 @@ A unified command-line interface for running security scans on codebases. Gerion
 ## Requirements
 
 - Python 3.12+
-- [Poetry](https://python-poetry.org/)
-- Linux x86_64 (scanner binaries are fetched for this platform)
+- [uv](https://docs.astral.sh/uv/)
+- `git` in `PATH` to read repository metadata (repository, branch, commit, author); without it scans still run with default metadata
+- Linux or macOS, x86_64 or arm64 (scanner binaries are downloaded for your platform and verified against pinned SHA-256 checksums)
+- [Go](https://go.dev/doc/install) 1.26.2+ to build KICS from source (it publishes no prebuilt binaries)
 
 ---
 
@@ -37,12 +39,12 @@ cd gerion-cli
 make install
 ```
 
-`make install` installs Python dependencies via Poetry and downloads all scanner binaries to `$HOME/.local/bin/`. Make sure that directory is in your `PATH`.
+`make install` installs Python dependencies via uv and downloads all scanner binaries to `$HOME/.local/bin/`. Make sure that directory is in your `PATH`.
 
 Individual targets are also available:
 
 ```sh
-make install-python       # Poetry install only
+make install-python       # uv sync only
 make gitleaks             # Install Gitleaks only
 make opengrep             # Install Opengrep only
 make osv-scanner          # Install OSV-Scanner only
@@ -50,12 +52,14 @@ make kics                 # Install KICS only
 
 make uninstall            # Uninstall everything
 make check                # Verify all tools are available in PATH
-make clean                # Uninstall everything and remove the Poetry virtual environment
+make test                 # Run the test suite (pytest)
+make lint                 # Run ruff
+make clean                # Uninstall everything and remove the virtual environment (`.venv`)
 ```
 
 ### With Docker
 
-The Docker image bundles all scanner binaries and the CLI in a single image. No local installation required.
+The Docker image bundles all scanner binaries and the CLI in a single image (linux/amd64 and linux/arm64). No local installation required. The CLI is installed as a regular Python package, and every downloaded scanner binary is verified against a pinned SHA-256 at build time.
 
 ```sh
 docker build -t gerion-cli .
@@ -73,9 +77,11 @@ export GERION_API_URL="https://api.gerion.dev"
 export GERION_API_KEY="your-m2m-api-key"
 ```
 
-Copy `env.example` to `.env` for local development. All options can also be passed directly as CLI flags on each command.
+Use an `https://` API URL: the API key is sent to it. Plain `http://` is accepted for local development but prints a warning unless the host is `localhost`, `127.0.0.1` or `::1`. To trust a private CA, set `GERION_CA_BUNDLE` to a PEM file or to a directory of hashed certificates.
 
-The `CLIENT_ID` is set automatically to `gerion-{version}` (e.g. `gerion-1.0.0`). It can be overridden with `GERION_CLIENT_ID` if needed.
+Use `env.example` as a template and export its variables in your shell or CI environment; the CLI does not load `.env` files automatically. Command options can also be passed as CLI flags.
+
+The `CLIENT_ID` is set automatically to `gerion-cli-{version}` (e.g. `gerion-cli-1.1.0`). It can be overridden with `GERION_CLIENT_ID` if needed.
 
 ---
 
@@ -84,8 +90,8 @@ The `CLIENT_ID` is set automatically to `gerion-{version}` (e.g. `gerion-1.0.0`)
 ### Running a scan
 
 ```sh
-# With Poetry
-poetry run gerion sast-scan [CODE_PATH] [OPTIONS]
+# With uv
+uv run gerion sast-scan [CODE_PATH] [OPTIONS]
 
 # With Docker
 docker run --rm -v "$PWD:/code" gerion-cli sast-scan /code
@@ -97,10 +103,11 @@ Each scan command accepts the same core set of options:
 |--------|---------|-------------|
 | `--api-url` | `GERION_API_URL` | Gerion API Gateway base URL |
 | `--api-key` | `GERION_API_KEY` | M2M API key for authentication |
-| `--client-id` | `GERION_CLIENT_ID` | Client identifier (default: `gerion-{version}`) |
+| `--client-id` | `GERION_CLIENT_ID` | Client identifier (default: `gerion-cli-{version}`) |
 | `--output-file` | — | Write results to a file (suppresses API and console output) |
 | `--format` | — | Output format for stdout: `json`, `markdown`, `sarif`, `table` |
 | `--timeout` | — | Scanner execution timeout in seconds (default: 180) |
+| `--fail-on` | `GERION_FAIL_ON` | Exit with code 3 if any finding has at least this severity: `critical`, `high`, `medium`, `low` (default: unset, findings never fail the command) |
 | `--log-level` | — | Logging verbosity: `debug`, `info`, `warning`, `error`, `critical` |
 
 The IaC scan additionally accepts `--queries-path` to specify a custom KICS queries directory.
@@ -118,20 +125,38 @@ When a scan completes, output is dispatched according to this priority:
 
 ### Scan all
 
-Runs all four scan types sequentially and aggregates the results:
+Runs all four scan types and aggregates the results:
 
 ```sh
-poetry run gerion scan-all [CODE_PATH] [OPTIONS]
+uv run gerion scan-all [CODE_PATH] [OPTIONS]
 ```
 
-When `--output-file` or `--format` is set, individual scan outputs are suppressed and the combined results are handled at the end.
+The four scanners run in parallel; their results are always parsed and reported in the same order (Secrets, SCA, IaC, SAST). Each scan keeps its own `scan_duration`, while the summary and the aggregated metadata's `scan_duration` report the wall-clock time of the whole command. On small CI runners, `--sequential` runs the scanners one after another for a lower peak CPU and memory use. `--timeout` applies to each scanner.
+
+When `--output-file` or `--format` is set, individual scan outputs are suppressed and the combined results are handled at the end. The output format is inferred from the file extension exactly as for single scans.
+
+Every scan runs even if another one fails. The results of the scans that succeeded are still emitted, the summary lists the failed scans, and the command exits with code 1.
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | The scan completed and, if `--fail-on` is set, no finding reached the threshold. |
+| `1` | A scanner could not run or failed (binary not in `PATH`, timeout, unexpected scanner exit code, missing or invalid report), or an unexpected command/output error prevented completion. |
+| `2` | Invalid command-line usage (Typer/Click validation). |
+| `3` | `--fail-on` is set and at least one finding has that severity or higher. Results are output or uploaded as usual first. |
+| `4` | Authentication or delivery to the API failed; the scan results were not stored. |
+
+For scan commands, precedence is `1 > 3 > 4`. All detected problems are reported even when a higher-priority code wins. `scan-all` evaluates `--fail-on` across all completed scans. Findings with an unknown or missing severity count as `low`. Without API credentials the CLI runs in console mode, which is not a failure; with credentials, a failed upload still prints the findings table but exits `4` unless a higher-priority condition applies.
+
+A project with nothing to scan (for example no dependency manifests for SCA) is a completed scan with no findings, not an error.
 
 ### Report
 
 Fetches findings from the API Gateway and renders a report:
 
 ```sh
-poetry run gerion report [PATH] [OPTIONS]
+uv run gerion report [PATH] [OPTIONS]
 ```
 
 | Option | Short | Description |
@@ -156,11 +181,13 @@ poetry run gerion report [PATH] [OPTIONS]
 
 ```yaml
 - name: Gerion security scan
+  env:
+    GERION_API_URL: ${{ secrets.GERION_API_URL }}
+    GERION_API_KEY: ${{ secrets.GERION_API_KEY }}
   run: |
     docker run --rm -v "$PWD:/code" \
-      -e GERION_API_URL=${{ secrets.GERION_API_URL }} \
-      -e GERION_API_KEY=${{ secrets.GERION_API_KEY }} \
-      gerion-cli scan-all /code
+      -e GERION_API_URL -e GERION_API_KEY \
+      gerion-cli scan-all /code --fail-on high   # exit 3 on HIGH or CRITICAL findings
 ```
 
 ### GitLab CI
@@ -169,10 +196,27 @@ poetry run gerion report [PATH] [OPTIONS]
 gerion-scan:
   image: gerion-cli:latest
   script:
-    - gerion scan-all . --api-url $GERION_API_URL --api-key $GERION_API_KEY
+    # GERION_API_URL and GERION_API_KEY are read from the CI/CD variables
+    - gerion scan-all . --fail-on high
 ```
 
-Scan results include full Git metadata (repository, branch, commit hash, author, build ID) sourced from environment variables or the local Git repository.
+Prefer passing the API key through the `GERION_API_KEY` environment variable rather than `--api-key`: command-line arguments are visible to other processes on the machine.
+
+### Scan metadata
+
+Scan results include Git metadata (repository, branch, commit hash, author, build ID, code path). It starts from the local Git repository, is overridden by the CI platform's variables (only when they are set and non-empty), and finally by the `GERION_*` variables.
+
+| Platform | Variables read |
+|----------|----------------|
+| GitHub Actions (detected by `GITHUB_SERVER_URL`) | `GITHUB_REPOSITORY`, `GITHUB_HEAD_REF` / `GITHUB_REF_NAME`, `GITHUB_RUN_ID` (falls back to `GITHUB_RUN_ATTEMPT`), `GITHUB_WORKSPACE`, `GITHUB_ACTOR`. Commit: PR head SHA from `GITHUB_EVENT_PATH` on `pull_request*` events (`GITHUB_EVENT_NAME`), else `GITHUB_SHA`, else `GITHUB_WORKFLOW_SHA` |
+| GitLab CI | `CI_PROJECT_NAME`, `CI_MERGE_REQUEST_SOURCE_BRANCH_NAME` / `CI_COMMIT_REF_NAME`, `CI_PIPELINE_ID` (falls back to `CI_JOB_ID`, then `CI_CONCURRENT_ID`), `CI_PROJECT_DIR` (falls back to `CI_BUILDS_DIR`), `CI_COMMIT_SHA`, `CI_COMMIT_AUTHOR` |
+| Jenkins | `GIT_URL`, `GIT_BRANCH`, `BUILD_NUMBER`, `WORKSPACE`, `GIT_COMMIT`, `GIT_COMMITTER_NAME` |
+| Manual overrides | `GERION_REPO_NAME`, `GERION_BRANCH_NAME`, `GERION_COMMIT_HASH`, `GERION_BUILD_ID` |
+
+The API expects `build_id` to be numeric: CI detection only uses numeric values and otherwise keeps `0`, and a non-numeric `GERION_BUILD_ID` prints a warning. Scans are stored per (organization, branch, scan type, build ID), so a build ID that is unique per run keeps one scan per run.
+
+The updated official GitHub Action forwards `GITHUB_RUN_ID`, `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME` and the other metadata variables, and mounts `GITHUB_EVENT_PATH` read-only when available. This preserves per-run history and lets the CLI record PR head commits. Use an Action revision containing this update; older revisions fall back to `GITHUB_RUN_ATTEMPT` and `GITHUB_SHA`.
+
 
 ---
 

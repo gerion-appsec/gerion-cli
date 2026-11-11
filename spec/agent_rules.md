@@ -15,7 +15,7 @@
 ## Development Workflow
 
 1. **Code**: Edit freely. Do NOT run build/test/git commands unless asked.
-2. **Build/Test**: User runs `pytest`, `poetry run`, etc. Paste errors for analysis.
+2. **Build/Test**: User runs `uv run pytest`, `uv run ruff check .`, etc. Paste errors for analysis.
 3. **Git**: User manages Git. Generate commit messages only when requested.
 4. **Docs**: Update `spec/` only when explicitly requested.
 5. **Efficiency**: Minimize tool calls. Don't read files unnecessarily.
@@ -24,6 +24,6 @@
 
 - **Logging**: Use Rich functions (`error()`, `warning()`, `success()`) — NOT `print()`.
 - **Secrets**: Always use `SecretString` wrapper. Never log secret values.
-- **Premium**: Import with `try/except ImportError`. Core must work without `gerion_cli/pro/`.
-- **Error handling**: Return `None`/`False` from tools/API, let command layer handle exit.
-- **Tests**: pytest + mock `subprocess.run` and `httpx`. Fixtures in `tests/fixtures/`.
+- **Premium**: Discover optional plugins through the `gerion.enrichers` entry-point group. Core must work without any premium package; plugin failures warn and preserve scanner findings.
+- **Error handling**: Scanner failures raise `ToolError`; empty findings mean a completed scan. API helpers return `None`/`False` for delivery/authentication failures. The command layer owns exit codes (`1 > 3 > 4`; `2` is invalid usage).
+- **Tests**: pytest + mock scanner execution (`subprocess.Popen`) and `httpx` as appropriate. Fixtures in `tests/fixtures/`.

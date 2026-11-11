@@ -1,7 +1,9 @@
 import typer
-from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID
-from gerion_cli.tools import run_sca_tool, parse_sca_tool_output
-from gerion_cli.commands.base import run_scan
+
+from gerion_cli.commands.base import FAIL_ON_OPTION, run_scan
+from gerion_cli.core import CLIENT_ID, FailOn, LogLevel, OutputFormat
+from gerion_cli.tools import parse_sca_tool_output, run_sca_tool
+
 
 def sca_scan(
     code_path: str = typer.Argument(".", help="Path to the code directory to scan", show_default=True),
@@ -11,6 +13,7 @@ def sca_scan(
     output_file: str = typer.Option(None, "--output-file", "-o", help="Save results to a file (disables API sending)"),
     format: OutputFormat = typer.Option(None, "--format", "-f", help="Output format for file saving or stdout (json, markdown, sarif)"),
     timeout: int = typer.Option(180, "--timeout", "-t", help="Tool execution timeout in seconds"),
+    fail_on: FailOn = FAIL_ON_OPTION,
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
@@ -46,5 +49,6 @@ def sca_scan(
         output_file=output_file,
         format=format,
         timeout=timeout,
-        log_level=log_level
+        log_level=log_level,
+        fail_on=fail_on
     )

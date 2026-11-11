@@ -29,6 +29,12 @@ env/
 ENV/
 .env
 gerion-cli-venv/
+.venv/
+
+# Tool caches
+.ruff_cache/
+.pytest_cache/
+.coverage
 
 # Reports
 gerion-cli-*-report.json
@@ -40,7 +46,7 @@ gerion-cli-scan-results.md
 # PyInstaller
 *.spec
 
-# Dependencies locks
+# Legacy Poetry lock (uv.lock is tracked)
 poetry.lock
 
 # IDE

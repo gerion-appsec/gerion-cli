@@ -1,60 +1,30 @@
-import subprocess
-import json
-import os
-import shutil
-import tempfile
-from typing import List, Dict, Any, Optional
-from gerion_cli.core.logging import error
+from typing import Any
 
-def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
+from gerion_cli.tools._runner import ToolError, path_arg, run_tool
+
+
+def run_sast_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]:
     """
     Run SAST scan using Opengrep.
     Findings are enriched by plugins if available.
-    
+
     Returns:
-        list: enriched_opengrep_results
+        list: opengrep results. Raises ToolError on failure.
     """
-    results = []
-
-    if not shutil.which("opengrep"):
-        error("Opengrep tool not found in PATH.")
-        return []
-
-    # Create a temporary file for the report
-    with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as temp_report:
-        report_path = temp_report.name
-
-    # Calculate tool timeout (allow 10s buffer for CLI overhead)
-    tool_timeout = max(1, timeout - 10)
-
-    # 1. Run Opengrep (OSS)
-    command = [
-        "opengrep", "scan",
-        "--config", "auto",
-        "--timeout", str(tool_timeout),
-        "--json",
-        "--output", report_path,
-        "--disable-version-check", # Optimization: skip version check for speed
-        code_path
-    ]
-    
-    try:
-        # Opengrep returns non-zero on findings, so check=False
-        subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout)
-        
-        if os.path.exists(report_path):
-            with open(report_path, 'r') as file:
-                data = json.load(file)
-            if data:
-                results = data.get('results', [])
-    except subprocess.TimeoutExpired:
-        error(f"SAST scan timed out after {timeout} seconds.")
-        return []
-    except Exception as e:
-        error(f"An error occurred while running SAST scan: {e}")
-    finally:
-        if os.path.exists(report_path):
-            try: os.remove(report_path)
-            except OSError: pass
-
-    return results
+    # Without --error, opengrep exits 0 with or without findings; non-zero is a
+    # failure (e.g. 2 when the rules cannot be fetched or the path does not exist).
+    data = run_tool(
+        "opengrep",
+        lambda report_path: [
+            "opengrep", "scan",
+            "--config", "auto",
+            "--json",
+            "--output", report_path,
+            "--disable-version-check",  # Optimization: skip version check for speed
+            path_arg(code_path),
+        ],
+        timeout=timeout,
+    )
+    if not isinstance(data, dict):
+        raise ToolError("opengrep wrote an unexpected report (expected a JSON object).")
+    return data.get('results') or []

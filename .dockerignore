@@ -14,6 +14,11 @@ __pycache__/
 .Python
 
 # =====================
+# Open core: premium code must never enter the public image
+# =====================
+gerion_cli/pro/
+
+# =====================
 # Virtual Environments
 # =====================
 venv/
@@ -22,6 +27,7 @@ ENV/
 env.bak/
 venv.bak/
 gerion-cli-venv/
+.venv/
 
 # =====================
 # Python Tools & Caches
@@ -32,6 +38,7 @@ gerion-cli-venv/
 .cache
 .mypy_cache
 .pytest_cache
+.ruff_cache/
 .hypothesis
 
 # =====================
@@ -57,11 +64,6 @@ output.json
 gerion-cli-*.json
 
 # =====================
-# Dependency Locks (regenerated in Docker build)
-# =====================
-poetry.lock
-
-# =====================
 # Editor & OS Files
 # =====================
 .vscode/
@@ -85,10 +87,8 @@ spec/
 !README.md
 
 # =====================
-# Project Metadata
+# Project Metadata (LICENSE/NOTICE are needed by the wheel build)
 # =====================
-LICENSE
-NOTICE
 env.example
 .env
 
