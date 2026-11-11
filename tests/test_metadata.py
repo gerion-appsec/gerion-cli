@@ -181,3 +181,39 @@ def test_get_metadata_repo_without_commits(tmp_path):
     metadata = get_metadata(code_path=str(tmp_path / "work"))
     assert metadata["repository_name"] == "local"
     assert metadata["commit_hash"] is None
+
+
+_GITHUB = {"GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "o/r"}
+_GITLAB = {"GITLAB_CI": "true", "CI_PROJECT_NAME": "proj"}
+
+
+@pytest.mark.parametrize("env, expected", [
+    ({**_GITHUB, "GITHUB_RUN_ID": "9001", "GITHUB_RUN_ATTEMPT": "2"}, "9001"),
+    ({**_GITHUB, "GITHUB_RUN_ATTEMPT": "2"}, "2"),
+    ({**_GITHUB, "GITHUB_RUN_ID": "abc", "GITHUB_RUN_ATTEMPT": "3"}, "3"),
+    ({**_GITHUB}, "0"),
+    ({**_GITLAB, "CI_PIPELINE_ID": "77", "CI_JOB_ID": "5", "CI_CONCURRENT_ID": "1"}, "77"),
+    ({**_GITLAB, "CI_JOB_ID": "5", "CI_CONCURRENT_ID": "1"}, "5"),
+    ({**_GITLAB, "CI_CONCURRENT_ID": "1"}, "1"),
+    ({**_GITLAB, "CI_PIPELINE_ID": "", "CI_JOB_ID": "x1"}, "0"),
+    ({"JENKINS_URL": "http://j", "BUILD_NUMBER": "12"}, "12"),
+    ({"JENKINS_URL": "http://j"}, "0"),
+    ({"JENKINS_URL": "http://j", "BUILD_NUMBER": "#12"}, "0"),
+])
+def test_ci_build_id_is_numeric_with_fallbacks(env, expected, tmp_path):
+    with patch.dict(os.environ, env, clear=True):
+        assert get_metadata(code_path=str(tmp_path))["build_id"] == expected
+
+
+def test_gerion_build_id_override_wins_and_warns_when_not_numeric(tmp_path):
+    env = {**_GITHUB, "GITHUB_RUN_ID": "9001", "GERION_BUILD_ID": "123-2"}
+    with patch.dict(os.environ, env, clear=True), patch.object(metadata_module, "warning") as warn:
+        assert get_metadata(code_path=str(tmp_path))["build_id"] == "123-2"
+    warn.assert_called_once()
+    assert "numeric" in warn.call_args.args[0]
+
+
+def test_gerion_build_id_numeric_does_not_warn(tmp_path):
+    with patch.dict(os.environ, {"GERION_BUILD_ID": "55"}, clear=True), patch.object(metadata_module, "warning") as warn:
+        assert get_metadata(code_path=str(tmp_path))["build_id"] == "55"
+    warn.assert_not_called()
