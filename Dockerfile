@@ -117,6 +117,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # refuses to read repository metadata ("dubious ownership").
     git config --system --add safe.directory '*'
 
+# The python:slim base ships the standard library without .pyc files and the runtime
+# user cannot write them, so every run recompiled each stdlib module it imported
+# (~80 for `gerion --version`). site-packages is compiled by the install steps below.
+RUN python -m compileall -q -j 0 -x '/site-packages/' "$(python -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
+
 COPY --from=tool-builder /out/gitleaks /out/opengrep /out/osv-scanner /usr/local/bin/
 COPY --from=kics-builder /out/kics /usr/local/bin/kics
 
@@ -125,14 +130,17 @@ COPY --from=kics-builder /build/assets/queries /usr/local/bin/assets/queries
 
 # uv is only mounted for the install steps and never lands in the image. Bytecode is
 # compiled here because the runtime user cannot write .pyc files. Dependencies come
-# first (hash-checked) so they stay cached when only the source changes.
+# first (hash-checked) so they stay cached when only the source changes. uv leaves a
+# world-writable lock file in /tmp; it is removed in the same layer.
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490,source=/uv,target=/usr/local/bin/uv \
     --mount=from=cli-reqs,source=/requirements.txt,target=/tmp/requirements.txt \
-    uv pip install --system --no-cache --compile-bytecode --require-hashes -r /tmp/requirements.txt
+    uv pip install --system --no-cache --compile-bytecode --require-hashes -r /tmp/requirements.txt && \
+    rm -f /tmp/uv-*.lock
 
 RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490,source=/uv,target=/usr/local/bin/uv \
     --mount=from=cli-wheel,source=/wheels,target=/wheels \
-    uv pip install --system --no-cache --compile-bytecode --no-deps /wheels/*.whl
+    uv pip install --system --no-cache --compile-bytecode --no-deps /wheels/*.whl && \
+    rm -f /tmp/uv-*.lock
 
 # User Setup
 RUN groupadd -r gerion && useradd -r -g gerion -d /home/gerion -m gerion && \
