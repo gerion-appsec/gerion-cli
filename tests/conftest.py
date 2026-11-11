@@ -1,7 +1,18 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
+
+# Render CLI output without ANSI styling, whatever the host environment. CI runners
+# (GITHUB_ACTIONS, FORCE_COLOR) make Rich style the help text, which splits option
+# names like "--fail-on" across escape sequences and breaks plain substring
+# assertions. This runs at import time because the Rich consoles are created when
+# gerion_cli is first imported, before any fixture.
+for _name in ("GITHUB_ACTIONS", "FORCE_COLOR", "PY_COLORS", "CLICOLOR_FORCE"):
+    os.environ.pop(_name, None)
+os.environ["NO_COLOR"] = "1"
+os.environ["TERM"] = "dumb"
 
 
 @pytest.fixture
