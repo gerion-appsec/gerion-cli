@@ -4,7 +4,7 @@ Parsing functionality for security tool outputs.
 import hashlib
 import re
 from datetime import datetime
-from functools import cmp_to_key
+from functools import cmp_to_key, lru_cache
 
 from packaging.version import InvalidVersion, Version
 
@@ -123,6 +123,8 @@ def _numeric_version(version: str) -> tuple[int, ...] | None:
     return tuple(int(part) for part in match.group().split('.')) if match else None
 
 
+# Advisories repeat the same few versions many times: cache the parsed comparisons.
+@lru_cache(maxsize=4096)
 def compare_versions(a: str, b: str) -> int | None:
     """
     Compare two versions from any ecosystem: -1, 0 or 1, or None if they are not comparable.
@@ -247,12 +249,16 @@ _GHSA_SKIP_KEYS = {
     'remediation', 'suggested fix', 'fix',
 }
 
+_GHSA_HEADING = re.compile(r'^#{1,4}\s+(.+)$')
+_GHSA_ANY_HEADING = re.compile(r'^#{1,4}\s+', re.MULTILINE)
+
+
 def _parse_ghsa_sections(details: str) -> dict:
     """
     Parse ## / ### sections from a GHSA advisory details field.
     Returns dict of {section_title_lower: content} or {} if no sections found.
     """
-    if not details or not re.search(r'^#{1,4}\s+', details, re.MULTILINE):
+    if not details or not _GHSA_ANY_HEADING.search(details):
         return {}
 
     sections = {}
@@ -260,7 +266,8 @@ def _parse_ghsa_sections(details: str) -> dict:
     current_lines = []
 
     for line in details.split('\n'):
-        m = re.match(r'^#{1,4}\s+(.+)$', line)
+        # Only lines starting with '#' can be headings: skip the regex for the rest.
+        m = _GHSA_HEADING.match(line) if line.startswith('#') else None
         if m:
             if current_key is not None:
                 sections[current_key] = '\n'.join(current_lines).strip()
