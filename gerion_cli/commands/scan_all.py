@@ -1,8 +1,20 @@
+from typing import Any
+
 import typer
 
-from gerion_cli.commands.base import run_scan
-from gerion_cli.core import CLIENT_ID, LogLevel, OutputFormat, info, panel
-from gerion_cli.output import findings_table, print_formatted, save_to_file
+from gerion_cli.commands.base import build_results, dispatch_results, execute_tool
+from gerion_cli.core import (
+    CLIENT_ID,
+    LogLevel,
+    OutputFormat,
+    SecretString,
+    error,
+    get_metadata,
+    info,
+    panel,
+    set_log_level,
+)
+from gerion_cli.output import findings_table, print_formatted, resolve_file_format, save_to_file
 from gerion_cli.tools import (
     parse_iac_tool_output,
     parse_sast_tool_output,
@@ -37,6 +49,7 @@ def scan_all(
     This command runs Gitleaks, OSV-Scanner, KICS, and Opengrep in sequence.
     When --output-file is provided, all findings are aggregated into a single file.
     When sending to API, each scan submits independently.
+    Every scan runs even if another one fails; the command then exits with code 1.
 
     Examples:
         # Scan current directory with all tools
@@ -51,54 +64,71 @@ def scan_all(
         # Send to API Gateway
         gerion scan-all --api-url https://api.gerion.dev --api-key YOUR_KEY
     """
-    all_findings = []
-    total_duration = 0.0
-    last_metadata = None
+    set_log_level(log_level)
+    api_key_string = SecretString.from_typer_option(api_key)
+    effective_client_id = client_id or CLIENT_ID
 
-    # When output_file or format is set, suppress file/format/API in individual
-    # scans — scan_all handles aggregation and output at the end.
-    suppress_output = output_file or format
+    # When output_file or format is set, individual scans only collect results —
+    # scan_all handles aggregation and output at the end.
+    aggregate_output = bool(output_file or format)
+
+    base_metadata = get_metadata(code_path=code_path)
+    completed: list[dict[str, Any]] = []
+    failed: list[str] = []
 
     for config in SCAN_CONFIGS:
-        results = run_scan(
-            **config,
-            code_path=code_path,
-            api_url=None if suppress_output else api_url,
-            client_id=None if suppress_output else client_id,
-            api_key=None if suppress_output else api_key,
-            output_file=None,
-            format=None,
-            timeout=timeout,
-            log_level=log_level
-        )
-        if results:
-            all_findings.extend(results['findings'])
-            total_duration += results['metadata'].get('scan_duration', 0)
-            last_metadata = results['metadata']
+        results = _run_one_scan(config, code_path, timeout, base_metadata)
+        if results is None:
+            failed.append(config["scan_type"])
+            continue
+        completed.append(results)
+        if not aggregate_output:
+            dispatch_results(results, config["scan_type"], api_url, effective_client_id, api_key_string, None, None)
 
-    # Aggregated output routing (mirrors base.py priority for individual scans)
-    if last_metadata:
+    all_findings = [finding for results in completed for finding in results['findings']]
+    total_duration = round(sum(results['metadata']['scan_duration'] for results in completed), 2)
+
+    # Aggregated output routing (mirrors base.py priority for individual scans).
+    # Partial results are still emitted; the exit code reports the failed scans.
+    if aggregate_output and completed:
         aggregated = {
-            'metadata': {
-                **last_metadata,
-                'scan_type': 'All',
-                'scan_duration': round(total_duration, 2)
-            },
+            'metadata': {**base_metadata, 'scan_type': 'All', 'scan_duration': total_duration},
             'findings': all_findings
         }
 
         if output_file:
-            save_to_file(aggregated, output_file, format or OutputFormat.JSON)
+            save_to_file(aggregated, output_file, resolve_file_format(output_file, format))
             info(f"Aggregated results saved to {output_file}")
-        elif format:
-            if format == OutputFormat.TABLE:
-                findings_table(all_findings, "All")
-            else:
-                print_formatted(aggregated, format)
+        elif format == OutputFormat.TABLE:
+            findings_table(all_findings, "All")
+        else:
+            print_formatted(aggregated, format)
 
+    succeeded = [results['metadata']['scan_type'] for results in completed]
     panel(
         "Full Scan Summary",
+        f"Completed scans: {', '.join(succeeded) or 'none'}\n"
+        f"Failed scans: {', '.join(failed) or 'none'}\n"
         f"Total findings: {len(all_findings)}\n"
-        f"Total duration: {round(total_duration, 2)}s",
-        "green"
+        f"Total duration: {total_duration}s",
+        "red" if failed else "green"
     )
+
+    if failed:
+        error(f"{len(failed)} of {len(SCAN_CONFIGS)} scans failed: {', '.join(failed)}. Their findings are missing.")
+        raise typer.Exit(1)
+
+
+def _run_one_scan(
+    config: dict[str, Any], code_path: str, timeout: int, base_metadata: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Run, parse and enrich one scan; None if it failed (the error is logged)."""
+    scan_type = config["scan_type"]
+    info(f"Starting {scan_type} scan...")
+    try:
+        tool_output, duration = execute_tool(scan_type, config["tool_name"], config["tool_runner"], code_path, timeout)
+        metadata = {**base_metadata, 'scan_type': scan_type, 'scan_duration': duration}
+        return build_results(scan_type, tool_output, config["tool_parser"], metadata, code_path)
+    except Exception as e:
+        error(f"{scan_type} scan failed: {e}")
+        return None

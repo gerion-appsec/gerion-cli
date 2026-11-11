@@ -127,7 +127,18 @@ Runs all four scan types sequentially and aggregates the results:
 uv run gerion scan-all [CODE_PATH] [OPTIONS]
 ```
 
-When `--output-file` or `--format` is set, individual scan outputs are suppressed and the combined results are handled at the end.
+When `--output-file` or `--format` is set, individual scan outputs are suppressed and the combined results are handled at the end. The output format is inferred from the file extension exactly as for single scans.
+
+Every scan runs even if another one fails. The results of the scans that succeeded are still emitted, the summary lists the failed scans, and the command exits with code 1.
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | The scan completed. Findings do not fail the build. |
+| `1` | A scanner could not run or failed (binary not in `PATH`, timeout, unexpected scanner exit code, missing or invalid report), or the command could not complete. Its findings are missing, so the result must not be treated as clean. |
+
+A project with nothing to scan (for example no dependency manifests for SCA) is a completed scan with no findings, not an error.
 
 ### Report
 
