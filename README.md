@@ -23,6 +23,7 @@ A unified command-line interface for running security scans on codebases. Gerion
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
+- `git` in `PATH` to read repository metadata (repository, branch, commit, author); without it scans still run with default metadata
 - Linux or macOS, x86_64 or arm64 (scanner binaries are downloaded for your platform and verified against pinned SHA-256 checksums)
 - [Go](https://go.dev/doc/install) 1.26.2+ to build KICS from source (it publishes no prebuilt binaries)
 

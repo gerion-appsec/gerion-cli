@@ -108,7 +108,7 @@ RUN rm -rf gerion_cli/pro && uv build --wheel --out-dir /wheels
 # ------------------------------------------------------------------------------
 FROM python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
-# - git: required by Gitleaks and Opengrep
+# - git: required by Gitleaks and Opengrep, and read by the CLI for repository metadata
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     ca-certificates \

@@ -1,9 +1,10 @@
 import subprocess
 import sys
 
-# Heavy modules only needed by some code paths (API calls, PDF reports). Loading them
-# at startup made every invocation, even `gerion --version`, pay for them.
-LAZY_MODULES = ("httpx", "fpdf", "PIL", "fontTools")
+# Heavy modules only needed by some code paths (API calls, PDF reports), and GitPython,
+# which was replaced by plain git calls. Loading them at startup made every
+# invocation, even `gerion --version`, pay for them.
+LAZY_MODULES = ("httpx", "fpdf", "PIL", "fontTools", "git")
 
 
 def test_cli_startup_does_not_import_heavy_modules():
