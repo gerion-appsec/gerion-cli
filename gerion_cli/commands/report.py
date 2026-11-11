@@ -1,15 +1,11 @@
 from datetime import datetime
 from enum import Enum
 
-import httpx
 import typer
-from fpdf.enums import XPos, YPos
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from gerion_cli.api.auth import authenticate_with_api
-from gerion_cli.api.http import HTTP_TIMEOUT, check_api_url, ssl_verify
 from gerion_cli.core.config import CLIENT_ID
 from gerion_cli.core.logging import LogLevel, debug, error, info, set_log_level, success, warning
 from gerion_cli.core.metadata import get_metadata
@@ -46,6 +42,12 @@ def report(
     """
     Generate a security report for the current project or specified filters.
     """
+    # Imported here so the other commands do not pay for httpx at startup.
+    import httpx
+
+    from gerion_cli.api.auth import authenticate_with_api
+    from gerion_cli.api.http import HTTP_TIMEOUT, check_api_url, ssl_verify
+
     # 0. Set Effective Context
     set_log_level(log_level)
 
@@ -349,7 +351,9 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
         output_path = f"report_{repo}_{branch}_{datetime.now().strftime('%Y%m%d')}.pdf"
 
     try:
+        # fpdf2 pulls in Pillow and fontTools: only load it when a PDF is requested.
         from fpdf import FPDF
+        from fpdf.enums import XPos, YPos
 
         # Calculate summary statistics
         stats = severity_stats(findings)

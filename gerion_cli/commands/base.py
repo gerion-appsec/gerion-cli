@@ -5,7 +5,6 @@ from typing import Any
 
 import typer
 
-from gerion_cli.api import send_to_api
 from gerion_cli.core import (
     CLIENT_ID,
     LogLevel,
@@ -145,6 +144,9 @@ def dispatch_results(
             findings_table(results['findings'], scan_type)
 
     elif all([api_url, client_id, api_key]):
+        # Imported here so commands that never talk to the API do not load httpx.
+        from gerion_cli.api import send_to_api
+
         success_result = send_to_api(results, api_url, client_id, api_key)
         if not success_result:
             warning("Results will be displayed in console only.")
