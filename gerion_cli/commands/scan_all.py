@@ -54,7 +54,7 @@ def scan_all(
     another with --sequential). Results are always reported in that fixed order.
     When --output-file is provided, all findings are aggregated into a single file.
     When sending to API, each scan submits independently.
-    Every scan runs even if another one fails; the command then exits with code 1.
+    Every scan runs (and uploads) even if another one fails; the command then exits with code 1.
 
     Examples:
         # Scan current directory with all tools
@@ -81,6 +81,7 @@ def scan_all(
     base_metadata = get_metadata(code_path=code_path)
     completed: list[dict[str, Any]] = []
     failed: list[str] = []
+    upload_failed: list[str] = []
 
     outcomes = _execute_scans(code_path, timeout, sequential)
 
@@ -91,8 +92,10 @@ def scan_all(
             failed.append(config["scan_type"])
             continue
         completed.append(results)
-        if not aggregate_output:
-            dispatch_results(results, config["scan_type"], api_url, effective_client_id, api_key_string, None, None)
+        if not aggregate_output and dispatch_results(
+            results, config["scan_type"], api_url, effective_client_id, api_key_string, None, None
+        ):
+            upload_failed.append(config["scan_type"])
 
     all_findings = [finding for results in completed for finding in results['findings']]
     total_duration = round(time.monotonic() - started, 2)
@@ -118,13 +121,17 @@ def scan_all(
         "Full Scan Summary",
         f"Completed scans: {', '.join(succeeded) or 'none'}\n"
         f"Failed scans: {', '.join(failed) or 'none'}\n"
+        f"Failed uploads: {', '.join(upload_failed) or 'none'}\n"
         f"Total findings: {len(all_findings)}\n"
         f"Total duration: {total_duration}s",
-        "red" if failed else "green"
+        "red" if failed or upload_failed else "green"
     )
 
     if failed:
         error(f"{len(failed)} of {len(SCAN_CONFIGS)} scans failed: {', '.join(failed)}. Their findings are missing.")
+    if upload_failed:
+        error(f"Uploading the results of {', '.join(upload_failed)} to the API failed; they were not stored.")
+    if failed or upload_failed:
         raise typer.Exit(1)
 
 

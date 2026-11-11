@@ -125,8 +125,11 @@ def dispatch_results(
     api_key: SecretString,
     output_file: str | None,
     format: OutputFormat | None,
-) -> None:
+) -> bool:
     """
+    Returns True when the results were uploaded to the API but the upload failed
+    (callers must then exit non-zero); False otherwise, including console mode.
+
     Output Priority:
     1. Output File -> Save to file (no table, no API)
     2. Format (explicitly requested) -> Print formatted output (no table, no API)
@@ -141,7 +144,7 @@ def dispatch_results(
         # If format is provided and output_file is NOT set, print to stdout.
         if format == OutputFormat.TABLE:
             findings_table(results['findings'], scan_type)
-            return
+            return False
 
         try:
             from gerion_cli.output import print_formatted
@@ -159,11 +162,13 @@ def dispatch_results(
         if not success_result:
             warning("Results will be displayed in console only.")
             findings_table(results['findings'], scan_type)
+            return True
     else:
         # Fallback: Local console mode.
         if not api_key:
             warning("No API key provided. Results will not be sent to the API.")
         findings_table(results['findings'], scan_type)
+    return False
 
 
 def run_scan(
@@ -184,8 +189,9 @@ def run_scan(
     """
     Base function to run a security scan using a specified tool runner and parser.
 
-    Exits with code 1 when the scanner could not run or failed: a scan that did not
-    happen must never be reported as "no findings".
+    Exits with code 1 when the scanner could not run or failed (a scan that did not
+    happen must never be reported as "no findings") or when the API upload failed
+    (CI must not believe the results were stored).
     """
     set_log_level(log_level)
     api_key_string = SecretString.from_typer_option(api_key)
@@ -208,5 +214,7 @@ def run_scan(
         raise typer.Exit(1) from None
 
     results = build_results(scan_type, tool_output, tool_parser, metadata, code_path)
-    dispatch_results(results, scan_type, api_url, effective_client_id, api_key_string, output_file, format)
+    if dispatch_results(results, scan_type, api_url, effective_client_id, api_key_string, output_file, format):
+        error(f"{scan_type} results could not be uploaded to the API; the findings above were not stored.")
+        raise typer.Exit(1)
     return results
