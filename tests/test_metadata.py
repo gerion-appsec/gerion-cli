@@ -217,3 +217,38 @@ def test_gerion_build_id_numeric_does_not_warn(tmp_path):
     with patch.dict(os.environ, {"GERION_BUILD_ID": "55"}, clear=True), patch.object(metadata_module, "warning") as warn:
         assert get_metadata(code_path=str(tmp_path))["build_id"] == "55"
     warn.assert_not_called()
+
+
+@pytest.mark.parametrize("env, expected", [
+    ({"CI_PROJECT_DIR": "/builds/g/p", "CI_BUILDS_DIR": "/builds"}, "/builds/g/p"),
+    ({"CI_BUILDS_DIR": "/builds"}, "/builds"),
+    ({"CI_PROJECT_DIR": ""}, "KEEP"),
+])
+def test_gitlab_code_path_prefers_project_dir(env, expected, tmp_path):
+    with patch.dict(os.environ, {**_GITLAB, **env}, clear=True):
+        code_path = get_metadata(code_path=str(tmp_path))["code_path"]
+    assert code_path == (str(tmp_path) if expected == "KEEP" else expected)
+
+
+def test_ci_block_never_overwrites_with_none(tmp_path):
+    """Jenkins without WORKSPACE/GIT_COMMIT/...: the git/default values survive."""
+    repo = _make_repo(tmp_path / "work", origin="git@github.com:myorg/myrepo.git")
+    sha = _git(repo, "rev-parse", "HEAD")
+    with patch.dict(os.environ, {"JENKINS_URL": "http://j", "PATH": os.environ["PATH"], **{
+        k: v for k, v in _GIT_ENV.items() if k.startswith("GIT_CONFIG")}}, clear=True):
+        metadata = get_metadata(code_path=str(repo))
+    assert metadata["code_path"] == str(repo)
+    assert metadata["commit_hash"] == sha
+    assert metadata["commit_author"] == "Git User"
+    assert metadata["repository_name"] == "myrepo"
+    assert metadata["branch_name"] == "feature-branch"
+    assert metadata["build_id"] == "0"
+
+
+def test_ci_block_overrides_with_non_empty_values(tmp_path):
+    env = {"JENKINS_URL": "http://j", "WORKSPACE": "/ws", "GIT_COMMIT": "abc", "GIT_BRANCH": "origin/dev",
+           "GIT_URL": "https://h/o/repo.git", "BUILD_NUMBER": "8"}
+    with patch.dict(os.environ, env, clear=True):
+        metadata = get_metadata(code_path=None)
+    assert (metadata["code_path"], metadata["commit_hash"], metadata["branch_name"]) == ("/ws", "abc", "dev")
+    assert (metadata["repository_name"], metadata["build_id"]) == ("repo", "8")

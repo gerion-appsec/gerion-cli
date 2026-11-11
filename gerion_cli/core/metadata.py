@@ -92,6 +92,12 @@ def _extract_repo_name_from_url(url: str) -> str:
     return segments[-1] if segments else url
 
 
+def _update_non_empty(metadata: dict, values: dict) -> None:
+    """Override metadata fields only with non-empty values, so a missing CI variable
+    keeps the git-derived or default value instead of becoming None."""
+    metadata.update({key: value for key, value in values.items() if value})
+
+
 def _numeric_env(*names: str) -> str | None:
     """First of the given environment variables whose value is a purely numeric string."""
     for name in names:
@@ -154,10 +160,10 @@ def get_metadata(code_path=None):
 
     # Override with CI/CD environment variables
     if os.getenv("GITHUB_SERVER_URL"):
-        metadata.update({
+        _update_non_empty(metadata, {
             "repository_name": os.getenv("GITHUB_REPOSITORY"),
             "branch_name": os.getenv("GITHUB_HEAD_REF") or os.getenv("GITHUB_REF_NAME"),
-            "build_id": _numeric_env("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT") or "0",
+            "build_id": _numeric_env("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"),
             "code_path": os.getenv("GITHUB_WORKSPACE"),
             "commit_hash": os.getenv("GITHUB_WORKFLOW_SHA"),
             "commit_author": os.getenv("GITHUB_ACTOR")
@@ -169,23 +175,24 @@ def get_metadata(code_path=None):
         branch_name = raw_branch[len("origin/"):] if raw_branch.startswith("origin/") else raw_branch
 
         # Jenkins sets GIT_URL to the full remote URL — extract the short repo name.
-        repo_name = _extract_repo_name_from_url(os.getenv("GIT_URL", "")) or "local"
+        git_url = os.getenv("GIT_URL")
+        repo_name = _extract_repo_name_from_url(git_url) if git_url else None
 
-        metadata.update({
+        _update_non_empty(metadata, {
             "repository_name": repo_name,
             "branch_name": branch_name,
-            "build_id": _numeric_env("BUILD_NUMBER") or "0",
+            "build_id": _numeric_env("BUILD_NUMBER"),
             "code_path": os.getenv("WORKSPACE"),
             "commit_hash": os.getenv("GIT_COMMIT"),
             "commit_author": os.getenv("GIT_COMMITTER_NAME"),
         })
 
     if os.getenv("GITLAB_CI"):
-        metadata.update({
+        _update_non_empty(metadata, {
             "repository_name": os.getenv("CI_PROJECT_NAME"),
             "branch_name": os.getenv("CI_MERGE_REQUEST_SOURCE_BRANCH_NAME") or os.getenv("CI_COMMIT_REF_NAME"),
-            "build_id": _numeric_env("CI_PIPELINE_ID", "CI_JOB_ID", "CI_CONCURRENT_ID") or "0",
-            "code_path": os.getenv("CI_BUILDS_DIR"),
+            "build_id": _numeric_env("CI_PIPELINE_ID", "CI_JOB_ID", "CI_CONCURRENT_ID"),
+            "code_path": os.getenv("CI_PROJECT_DIR") or os.getenv("CI_BUILDS_DIR"),
             "commit_hash": os.getenv("CI_COMMIT_SHA"),
             "commit_author": os.getenv("CI_COMMIT_AUTHOR")
         })
