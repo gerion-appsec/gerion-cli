@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 — Unreleased
+## 1.1.0 — 2026-11-11
 
 ### CI behavior changes
 
@@ -50,6 +50,3 @@
 - The GitHub Action forwards run and PR event metadata, supports `fail-on`, and
   preserves the CLI exit-code output on failure. Use companion revisions
   containing these changes; they are released separately.
-
-This release is prepared on `release/1.1.0`. No release tag or published image is
-created by preparing these notes.
