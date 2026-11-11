@@ -102,6 +102,15 @@ def build_results(
     return results
 
 
+def write_output_file(results: dict[str, Any], output_file: str, format: OutputFormat | None) -> None:
+    """Save results to --output-file; exit 1 with a clear error if it cannot be written."""
+    try:
+        save_to_file(results, output_file, resolve_file_format(output_file, format))
+    except OSError as e:
+        error(f"Could not write output file '{output_file}': {e.strerror or e}")
+        raise typer.Exit(1) from None
+
+
 def dispatch_results(
     results: dict[str, Any],
     scan_type: str,
@@ -119,7 +128,7 @@ def dispatch_results(
     4. Fallback -> Print table (console mode)
     """
     if output_file:
-        save_to_file(results, output_file, resolve_file_format(output_file, format))
+        write_output_file(results, output_file, format)
         debug("Results saved to file. Console output and API sending suppressed.")
 
     elif format:

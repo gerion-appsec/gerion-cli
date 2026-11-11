@@ -136,8 +136,7 @@ def report(
         import json
         output_data = json.dumps(findings, indent=2)
         if output_file:
-            with open(output_file, "w") as f:
-                f.write(output_data)
+            _write_report(output_file, output_data)
             success(f"Report saved to {output_file}")
         else:
             print(output_data)
@@ -148,8 +147,7 @@ def report(
     elif format == ReportFormat.MARKDOWN:
         md_content = generate_markdown_report(findings, current_repo, current_branch, include_description, include_mitigation, active_only)
         if output_file:
-            with open(output_file, "w") as f:
-                f.write(md_content)
+            _write_report(output_file, md_content)
             success(f"Markdown report saved to {output_file}")
         else:
             print(md_content)
@@ -164,6 +162,14 @@ def report(
         error(f"Unsupported format '{format}'.")
         info("Supported formats are: text, json, markdown, pdf")
         raise typer.Abort()
+
+def _write_report(output_file: str, content: str) -> None:
+    try:
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        error(f"Could not write output file '{output_file}': {e.strerror or e}")
+        raise typer.Abort() from None
 
 def display_text_report(findings, repo, branch, include_description, include_mitigation, active_only):
     # Every value below comes from scanned repos via the API: escape it so it is

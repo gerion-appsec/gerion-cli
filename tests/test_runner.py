@@ -161,3 +161,15 @@ def test_code_path_starting_with_dash_is_not_an_option(monkeypatch, module, runn
 
     assert "-v" not in argvs[0]
     assert os.path.join(".", "-v") in argvs[0]
+
+
+def test_unwritable_output_file_is_a_clean_error(tmp_path, capsys):
+    kwargs = _scan_kwargs(
+        tool_runner=lambda code_path, timeout: [{"id": "x"}],
+        output_file=str(tmp_path / "missing-dir" / "out.json"),
+        format=None,
+    )
+    with pytest.raises(typer.Exit) as exc_info:
+        run_scan(**kwargs)
+    assert exc_info.value.exit_code == 1
+    assert "Could not write output file" in capsys.readouterr().err

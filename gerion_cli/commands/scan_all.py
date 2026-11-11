@@ -2,7 +2,7 @@ from typing import Any
 
 import typer
 
-from gerion_cli.commands.base import build_results, dispatch_results, execute_tool
+from gerion_cli.commands.base import build_results, dispatch_results, execute_tool, write_output_file
 from gerion_cli.core import (
     CLIENT_ID,
     LogLevel,
@@ -14,7 +14,7 @@ from gerion_cli.core import (
     panel,
     set_log_level,
 )
-from gerion_cli.output import findings_table, print_formatted, resolve_file_format, save_to_file
+from gerion_cli.output import findings_table, print_formatted
 from gerion_cli.tools import (
     parse_iac_tool_output,
     parse_sast_tool_output,
@@ -97,7 +97,7 @@ def scan_all(
         }
 
         if output_file:
-            save_to_file(aggregated, output_file, resolve_file_format(output_file, format))
+            write_output_file(aggregated, output_file, format)
             info(f"Aggregated results saved to {output_file}")
         elif format == OutputFormat.TABLE:
             findings_table(all_findings, "All")
