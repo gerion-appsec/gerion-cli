@@ -4,6 +4,9 @@ Parsing functionality for security tool outputs.
 import hashlib
 import re
 from datetime import datetime
+from functools import cmp_to_key
+
+from packaging.version import InvalidVersion, Version
 
 secrets_severity = 'High'
 
@@ -63,22 +66,25 @@ def generate_unique_id(strings):
 
     return truncated_hash_hex
 
-def redact_text(text, visible_percent=0.3):
+REDACTED = "[REDACTED]"
+MAX_VISIBLE_PER_SIDE = 4
+
+
+def redact_text(text, visible_percent=0.25):
     """
-    Redacts the middle part of a string, keeping a percentage visible at start and end.
-    Total visible is visible_percent of the length.
+    Redacts a secret for display, keeping a hint of its start and end.
+
+    At most visible_percent of the value is revealed in total, and never more than
+    MAX_VISIBLE_PER_SIDE characters per side; values too short for that are fully masked.
     """
-    if not text or len(text) < 4:
+    if not text:
         return text
 
-    length = len(text)
-    visible_len = int(length * visible_percent)
-    if visible_len < 2: visible_len = 2 # Keep at least 1 char on each side if possible  # noqa: E701
+    side_len = min(MAX_VISIBLE_PER_SIDE, int(len(text) * visible_percent) // 2)
+    if side_len < 1:
+        return REDACTED
 
-    # Split visible length between start and end
-    side_len = visible_len // 2
-
-    return f"{text[:side_len]}...[REDACTED]...{text[-side_len:]}"
+    return f"{text[:side_len]}...{REDACTED}...{text[-side_len:]}"
 
 SEVERITY_RANK = {
     'CRITICAL': 4,
@@ -100,33 +106,71 @@ def _resolve_severity(severity_raw: str) -> str:
     return severity_map.get((severity_raw or '').upper(), 'LOW')
 
 
-def _extract_fixed_version(vuln: dict, pkg_name: str, pkg_ecosystem: str) -> str | None:
-    matched_affected = None
+# GIT ranges carry commit hashes as "fixed" events, which are not versions.
+_VERSION_RANGE_TYPES = ('ECOSYSTEM', 'SEMVER')
+_NUMERIC_VERSION_PREFIX = re.compile(r'\d+(?:\.\d+)*')
+
+
+def _normalize_version(version: str) -> str:
+    version = str(version).strip()
+    if version[:1] in ('v', 'V') and version[1:2].isdigit():
+        return version[1:]
+    return version
+
+
+def _numeric_version(version: str) -> tuple[int, ...] | None:
+    match = _NUMERIC_VERSION_PREFIX.match(version)
+    return tuple(int(part) for part in match.group().split('.')) if match else None
+
+
+def compare_versions(a: str, b: str) -> int | None:
+    """
+    Compare two versions from any ecosystem: -1, 0 or 1, or None if they are not comparable.
+
+    PEP 440 is used when both versions parse (it also understands most SemVer
+    prereleases); otherwise the leading numeric part is compared, so Maven
+    "1.2.3.Final" or Go "v1.2.3" still order sensibly.
+    """
+    a, b = _normalize_version(a), _normalize_version(b)
+    try:
+        va, vb = Version(a), Version(b)
+        return (va > vb) - (va < vb)
+    except InvalidVersion:
+        pass
+    na, nb = _numeric_version(a), _numeric_version(b)
+    if na is None or nb is None:
+        return None
+    width = max(len(na), len(nb))
+    na, nb = na + (0,) * (width - len(na)), nb + (0,) * (width - len(nb))
+    return (na > nb) - (na < nb)
+
+
+_version_sort_key = cmp_to_key(lambda a, b: compare_versions(a, b) or 0)
+
+
+def _applicable_fixed_version(vuln: dict, pkg_name: str, pkg_ecosystem: str, pkg_version: str) -> str | None:
+    """
+    Return the smallest fixed version greater than the installed one.
+
+    Advisories list one affected entry or range per maintained branch (e.g. Django
+    3.2.20 / 4.1.10 / 4.2.3), so every matching entry and range is considered and
+    fixes at or below the installed version (other branches) are ignored.
+    """
+    candidates = []
     for affected in vuln.get('affected', []):
         aff_pkg = affected.get('package', {})
-        if aff_pkg.get('name') == pkg_name:
-            if pkg_ecosystem and aff_pkg.get('ecosystem') and pkg_ecosystem != aff_pkg.get('ecosystem'):
+        if aff_pkg.get('name') != pkg_name:
+            continue
+        if pkg_ecosystem and aff_pkg.get('ecosystem') and pkg_ecosystem != aff_pkg.get('ecosystem'):
+            continue
+        for version_range in affected.get('ranges', []):
+            if version_range.get('type') not in _VERSION_RANGE_TYPES:
                 continue
-            matched_affected = affected
-            break
-
-    if not matched_affected:
-        return None
-
-    def range_priority(r):
-        rtype = r.get('type', '')
-        if rtype == 'ECOSYSTEM':
-            return 0
-        if rtype == 'SEMVER':
-            return 1
-        return 2
-
-    sorted_ranges = sorted(matched_affected.get('ranges', []), key=range_priority)
-    for r in sorted_ranges:
-        for event in r.get('events', []):
-            if 'fixed' in event:
-                return event['fixed']
-    return None
+            for event in version_range.get('events', []):
+                fixed = event.get('fixed')
+                if fixed and (compare_versions(fixed, pkg_version) or 0) > 0:
+                    candidates.append(fixed)
+    return min(candidates, key=_version_sort_key) if candidates else None
 
 
 def _extract_severity_for_vuln(vuln: dict, pkg_name: str, pkg_ecosystem: str) -> str:
@@ -290,7 +334,8 @@ def parse_sca_tool_output(output, metadata):
             cve_list = []
             cwe_set = set()
             max_severity = 'LOW'
-            fix_versions = []
+            # Applicable fix per (deduplicated) vulnerability id; None = no known fix.
+            fix_by_cve: dict[str, str | None] = {}
             vuln_descriptions = []
             vuln_details = []
 
@@ -309,9 +354,11 @@ def parse_sca_tool_output(output, metadata):
                 if SEVERITY_RANK.get(severity, 0) > SEVERITY_RANK.get(max_severity, 0):
                     max_severity = severity
 
-                fixed = _extract_fixed_version(vuln, pkg_name, pkg_ecosystem)
-                if fixed:
-                    fix_versions.append(fixed)
+                fixed = _applicable_fixed_version(vuln, pkg_name, pkg_ecosystem, pkg_version)
+                # Aliased records (PYSEC + GHSA) count once; keep a fix if any of them has one.
+                known = fix_by_cve.get(cve)
+                if known is None or (fixed and compare_versions(fixed, known) == 1):
+                    fix_by_cve[cve] = fixed
 
                 summary = vuln.get('summary')
                 details = vuln.get('details')
@@ -336,22 +383,10 @@ def parse_sca_tool_output(output, metadata):
                     '_rank': SEVERITY_RANK.get(severity, 0),
                 })
 
-            component_fix = None
-            if fix_versions:
-                try:
-                    from packaging.version import parse as parse_version
-                    component_fix = str(max(fix_versions, key=lambda v: parse_version(v)))
-                except Exception:
-                    component_fix = fix_versions[-1]
-
-            if component_fix:
-                try:
-                    from packaging.version import parse as parse_version
-                    clean_pkg_version = pkg_version.replace('.*', '').replace('*', '')
-                    if parse_version(clean_pkg_version) >= parse_version(component_fix):
-                        continue
-                except Exception:  # noqa: S110
-                    pass
+            # OSV already decided the package is vulnerable: never drop it here. The
+            # package fix is the version that fixes every vulnerability that has a fix.
+            fix_versions = [fix for fix in fix_by_cve.values() if fix]
+            component_fix = max(fix_versions, key=_version_sort_key) if fix_versions else None
 
             finding_id = str(generate_unique_id([source_path, pkg_name, pkg_version]))
 
@@ -368,7 +403,7 @@ def parse_sca_tool_output(output, metadata):
             )
             description = vuln_descriptions_sorted[0][1] if vuln_descriptions_sorted else f"Vulnerable package: {pkg_name}"
 
-            unfixed_count = len(vulnerabilities) - len(fix_versions)
+            unfixed_count = n_vulns - len(fix_versions)
             if component_fix:
                 if unfixed_count > 0:
                     mitigation_text = (

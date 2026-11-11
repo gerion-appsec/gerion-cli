@@ -1,69 +1,34 @@
 """
 SCA (Software Component Analysis) tool integration.
 """
-import json
-import os
-import shutil
-import subprocess
-import tempfile
+from typing import Any
 
-from gerion_cli.core.logging import error
+from gerion_cli.tools._runner import ToolError, path_arg, run_tool
+
+# osv-scanner: 0 = no vulnerabilities, 1 = vulnerabilities found,
+# 128 = no package sources found (no report written), 127 = error.
+OSV_OK_EXIT_CODES = (0, 1)
+OSV_NO_PACKAGES_EXIT_CODE = 128
 
 
-def run_sca_tool(code_path, timeout=180):
-    if not shutil.which("osv-scanner"):
-        error("OSV-Scanner tool not found in PATH.")
+def run_sca_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]:
+    """Run OSV-Scanner and return its `results` list. Raises ToolError on failure."""
+    data = run_tool(
+        "osv-scanner",
+        lambda report_path: [
+            "osv-scanner", "scan",
+            "--no-resolve",
+            "--format", "json",
+            "--output-file", report_path,
+            "-r",  # Recursive scan
+            path_arg(code_path),
+        ],
+        timeout=timeout,
+        ok_exit_codes=OSV_OK_EXIT_CODES,
+        no_report_exit_codes=(OSV_NO_PACKAGES_EXIT_CODE,),
+    )
+    if data is None:
         return []
-
-    # Create a temporary file for the report
-    with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as temp_report:
-        report_path = temp_report.name
-
-    # Calculate tool timeout (allow 10s buffer for CLI overhead)
-    tool_timeout = max(1, timeout - 10)  # noqa: F841
-
-    # OSV-Scanner command
-    # Usage: osv-scanner scan --format json --output-file <file> <path>
-    command = [
-        "osv-scanner", "scan",
-        "--no-resolve",
-        "--format", "json",
-        "--output-file", report_path,
-        "-r", # Recursive scan
-        code_path
-    ]
-
-    try:
-        # OSV-Scanner returns non-zero on vulnerabilities, so check=False
-        subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout)
-
-        # Check if report file exists
-        if not os.path.exists(report_path):
-            return []
-
-        # Read and parse JSON
-        with open(report_path) as file:
-            try:
-                data = json.load(file)
-            except json.JSONDecodeError:
-                # OSV-Scanner might create an empty file if no vulns
-                return []
-
-            if not data:
-                return []
-
-            # OSV-Scanner returns a root dict with "results"
-            results = data.get('results', [])
-            return results if results is not None else []
-
-    except subprocess.TimeoutExpired:
-        error(f"SCA scan timed out after {timeout} seconds.")
-        return []
-
-    except Exception as e:
-        error(f"An error occurred while running SCA scan: {e}")
-        return []
-    finally:
-        if os.path.exists(report_path):
-            try: os.remove(report_path)  # noqa: E701,SIM105
-            except OSError: pass  # noqa: E701
+    if not isinstance(data, dict):
+        raise ToolError("osv-scanner wrote an unexpected report (expected a JSON object).")
+    return data.get('results') or []

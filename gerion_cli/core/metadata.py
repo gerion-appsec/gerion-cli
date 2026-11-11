@@ -6,6 +6,8 @@ from pathlib import Path
 
 import git
 
+from gerion_cli.core.logging import debug
+
 
 def find_git_repo(path):
     """
@@ -115,27 +117,8 @@ def get_metadata(code_path=None):
         commit = repo.head.commit
 
         # Extract repository name from remote origin
-        repo_name = "local"
         try:
-            origin_url = repo.remotes.origin.url
-            if origin_url:
-                # Remove .git extension if present
-                clean_url = origin_url
-                if clean_url.endswith('.git'):
-                    clean_url = clean_url[:-4]
-
-                # Handle SSH URLs (git@domain:path)
-                if clean_url.startswith('git@'):
-                    parts = clean_url.split(':')
-                    if len(parts) >= 2:
-                        path_parts = [part for part in parts[1].split('/') if part]
-                        if path_parts:
-                            repo_name = path_parts[-1]
-                else:
-                    # Handle HTTPS URLs
-                    parts = [part for part in clean_url.split('/') if part]
-                    if parts:
-                        repo_name = parts[-1]
+            repo_name = _extract_repo_name_from_url(repo.remotes.origin.url)
         except Exception:
             repo_name = os.path.basename(repo.working_dir)
 
@@ -144,14 +127,18 @@ def get_metadata(code_path=None):
 
         metadata.update({
             "repository_name": repo_name,
-            "branch_name": repo.active_branch.name,
             "build_id": "0",
             "code_path": final_code_path,
             "commit_hash": commit.hexsha,
             "commit_author": commit.author.name
         })
-    except Exception:  # noqa: S110
-        pass
+        # A detached HEAD (git checkout <sha>, the norm on most CI systems) has no
+        # branch: keep the default instead of losing the rest of the metadata.
+        if not repo.head.is_detached:
+            metadata["branch_name"] = repo.active_branch.name
+    except (git.GitError, ValueError) as e:
+        # Not a repository, or a repository without commits.
+        debug(f"Git metadata unavailable: {e}")
 
     # Override with CI/CD environment variables
     if os.getenv("GITHUB_SERVER_URL"):

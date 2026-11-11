@@ -11,6 +11,7 @@ def test_get_metadata_git(mock_repo_cls):
     # Setup mock repo
     mock_repo = MagicMock()
     mock_repo.working_dir = "/mock/repo"
+    mock_repo.head.is_detached = False
     mock_repo.active_branch.name = "feature-branch"
     mock_repo.head.commit.hexsha = "deadbeef123456"
     mock_repo.head.commit.author.name = "Git User"
@@ -56,3 +57,35 @@ def test_get_metadata_manual_override():
 
     assert metadata["repository_name"] == "manual-repo"
     assert metadata["branch_name"] == "manual-branch"
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_get_metadata_detached_head_keeps_repo_and_commit(tmp_path):
+    """CI checkouts (git checkout <sha>) have no branch; the rest must not be lost."""
+    import git
+
+    repo = git.Repo.init(tmp_path)
+    (tmp_path / "f.txt").write_text("x")
+    repo.index.add(["f.txt"])
+    actor = git.Actor("CI Author", "ci@example.com")
+    sha = repo.index.commit("init", author=actor, committer=actor).hexsha
+    repo.create_remote("origin", "git@github.com:myorg/myrepo.git")
+    repo.git.checkout(sha)  # detach
+    assert repo.head.is_detached
+
+    metadata = get_metadata(code_path=str(tmp_path))
+
+    assert metadata["repository_name"] == "myrepo"
+    assert metadata["commit_hash"] == sha
+    assert metadata["commit_author"] == "CI Author"
+    assert metadata["branch_name"] == "local"
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_get_metadata_repo_without_commits(tmp_path):
+    import git
+
+    git.Repo.init(tmp_path)
+    metadata = get_metadata(code_path=str(tmp_path))
+    assert metadata["repository_name"] == "local"
+    assert metadata["commit_hash"] is None

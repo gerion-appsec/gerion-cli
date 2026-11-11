@@ -76,6 +76,8 @@ export GERION_API_URL="https://api.gerion.dev"
 export GERION_API_KEY="your-m2m-api-key"
 ```
 
+Use an `https://` API URL: the API key is sent to it. Plain `http://` is accepted for local development but prints a warning unless the host is `localhost`, `127.0.0.1` or `::1`. To trust a private CA, set `GERION_CA_BUNDLE` to a PEM file or to a directory of hashed certificates.
+
 Copy `env.example` to `.env` for local development. All options can also be passed directly as CLI flags on each command.
 
 The `CLIENT_ID` is set automatically to `gerion-cli-{version}` (e.g. `gerion-cli-1.0.4`). It can be overridden with `GERION_CLIENT_ID` if needed.
@@ -127,7 +129,18 @@ Runs all four scan types sequentially and aggregates the results:
 uv run gerion scan-all [CODE_PATH] [OPTIONS]
 ```
 
-When `--output-file` or `--format` is set, individual scan outputs are suppressed and the combined results are handled at the end.
+When `--output-file` or `--format` is set, individual scan outputs are suppressed and the combined results are handled at the end. The output format is inferred from the file extension exactly as for single scans.
+
+Every scan runs even if another one fails. The results of the scans that succeeded are still emitted, the summary lists the failed scans, and the command exits with code 1.
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | The scan completed. Findings do not fail the build. |
+| `1` | A scanner could not run or failed (binary not in `PATH`, timeout, unexpected scanner exit code, missing or invalid report), or the command could not complete. Its findings are missing, so the result must not be treated as clean. |
+
+A project with nothing to scan (for example no dependency manifests for SCA) is a completed scan with no findings, not an error.
 
 ### Report
 
@@ -159,10 +172,12 @@ uv run gerion report [PATH] [OPTIONS]
 
 ```yaml
 - name: Gerion security scan
+  env:
+    GERION_API_URL: ${{ secrets.GERION_API_URL }}
+    GERION_API_KEY: ${{ secrets.GERION_API_KEY }}
   run: |
     docker run --rm -v "$PWD:/code" \
-      -e GERION_API_URL=${{ secrets.GERION_API_URL }} \
-      -e GERION_API_KEY=${{ secrets.GERION_API_KEY }} \
+      -e GERION_API_URL -e GERION_API_KEY \
       gerion-cli scan-all /code
 ```
 
@@ -172,8 +187,11 @@ uv run gerion report [PATH] [OPTIONS]
 gerion-scan:
   image: gerion-cli:latest
   script:
-    - gerion scan-all . --api-url $GERION_API_URL --api-key $GERION_API_KEY
+    # GERION_API_URL and GERION_API_KEY are read from the CI/CD variables
+    - gerion scan-all .
 ```
+
+Prefer passing the API key through the `GERION_API_KEY` environment variable rather than `--api-key`: command-line arguments are visible to other processes on the machine.
 
 Scan results include full Git metadata (repository, branch, commit hash, author, build ID) sourced from environment variables or the local Git repository.
 
