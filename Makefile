@@ -35,7 +35,7 @@ endif
         install-gitleaks install-opengrep install-osv-scanner install-kics \
         gitleaks opengrep osv-scanner kics \
         uninstall uninstall-gitleaks uninstall-opengrep uninstall-osv-scanner uninstall-kics \
-        check clean help
+        check test lint clean help
 
 all: install
 
@@ -47,11 +47,11 @@ install: install-python install-tools
 	@echo "✓ Gerion CLI ready. Run: gerion --help"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Python / Poetry
+# Python / uv
 # ──────────────────────────────────────────────────────────────────────────────
 install-python:
 	@echo "→ Installing Python dependencies..."
-	@poetry install --no-interaction -q
+	@uv sync -q
 	@echo "  ✓ Python dependencies installed"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -131,15 +131,20 @@ install-kics:
 # ──────────────────────────────────────────────────────────────────────────────
 check:
 	@echo "Checking installed tools..."
-	@gerion --version      >/dev/null 2>&1 && echo "  ✓ gerion"      || echo "  ✗ gerion (run: make install-python)"
+	@uv run gerion --version >/dev/null 2>&1 && echo "  ✓ gerion"      || echo "  ✗ gerion (run: make install-python)"
 	@gitleaks version      >/dev/null 2>&1 && echo "  ✓ gitleaks"    || echo "  ✗ gitleaks (run: make gitleaks)"
 	@opengrep --version    >/dev/null 2>&1 && echo "  ✓ opengrep"    || echo "  ✗ opengrep (run: make opengrep)"
 	@osv-scanner --version >/dev/null 2>&1 && echo "  ✓ osv-scanner" || echo "  ✗ osv-scanner (run: make osv-scanner)"
 	@kics version          >/dev/null 2>&1 && echo "  ✓ kics"        || echo "  ✗ kics (run: make kics)"
 
+test:
+	@uv run pytest
+
+lint:
+	@uv run ruff check .
+
 uninstall: uninstall-gitleaks uninstall-opengrep uninstall-osv-scanner uninstall-kics
-	@pip uninstall -y gerion-cli 2>/dev/null || true
-	@poetry env remove --all 2>/dev/null || true
+	@rm -rf .venv
 	@echo "✓ Uninstall complete"
 
 uninstall-gitleaks:
@@ -166,7 +171,7 @@ help:
 	@echo "Gerion CLI — Makefile targets"
 	@echo ""
 	@echo "  make install             Install everything (Python deps + scanner binaries)"
-	@echo "  make install-python      Install Python dependencies via Poetry"
+	@echo "  make install-python      Install Python dependencies via uv"
 	@echo "  make gitleaks            Install Gitleaks only"
 	@echo "  make opengrep            Install Opengrep only"
 	@echo "  make osv-scanner         Install OSV-Scanner only"
@@ -176,5 +181,7 @@ help:
 	@echo "  make uninstall-opengrep  Uninstall Opengrep only"
 	@echo "  make uninstall-osv-scanner Uninstall OSV-Scanner only"
 	@echo "  make uninstall-kics      Uninstall KICS only"
+	@echo "  make test                Run the test suite"
+	@echo "  make lint                Run ruff"
 	@echo "  make check               Verify all tools are in PATH"
 	@echo "  make clean               Uninstall everything + remove venv"

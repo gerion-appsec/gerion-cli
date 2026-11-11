@@ -22,7 +22,7 @@ A unified command-line interface for running security scans on codebases. Gerion
 ## Requirements
 
 - Python 3.12+
-- [Poetry](https://python-poetry.org/)
+- [uv](https://docs.astral.sh/uv/)
 - Linux x86_64 (scanner binaries are fetched for this platform)
 
 ---
@@ -37,12 +37,12 @@ cd gerion-cli
 make install
 ```
 
-`make install` installs Python dependencies via Poetry and downloads all scanner binaries to `$HOME/.local/bin/`. Make sure that directory is in your `PATH`.
+`make install` installs Python dependencies via uv and downloads all scanner binaries to `$HOME/.local/bin/`. Make sure that directory is in your `PATH`.
 
 Individual targets are also available:
 
 ```sh
-make install-python       # Poetry install only
+make install-python       # uv sync only
 make gitleaks             # Install Gitleaks only
 make opengrep             # Install Opengrep only
 make osv-scanner          # Install OSV-Scanner only
@@ -50,7 +50,9 @@ make kics                 # Install KICS only
 
 make uninstall            # Uninstall everything
 make check                # Verify all tools are available in PATH
-make clean                # Uninstall everything and remove the Poetry virtual environment
+make test                 # Run the test suite (pytest)
+make lint                 # Run ruff
+make clean                # Uninstall everything and remove the virtual environment (`.venv`)
 ```
 
 ### With Docker
@@ -75,7 +77,7 @@ export GERION_API_KEY="your-m2m-api-key"
 
 Copy `env.example` to `.env` for local development. All options can also be passed directly as CLI flags on each command.
 
-The `CLIENT_ID` is set automatically to `gerion-{version}` (e.g. `gerion-1.0.0`). It can be overridden with `GERION_CLIENT_ID` if needed.
+The `CLIENT_ID` is set automatically to `gerion-cli-{version}` (e.g. `gerion-cli-1.0.4`). It can be overridden with `GERION_CLIENT_ID` if needed.
 
 ---
 
@@ -84,8 +86,8 @@ The `CLIENT_ID` is set automatically to `gerion-{version}` (e.g. `gerion-1.0.0`)
 ### Running a scan
 
 ```sh
-# With Poetry
-poetry run gerion sast-scan [CODE_PATH] [OPTIONS]
+# With uv
+uv run gerion sast-scan [CODE_PATH] [OPTIONS]
 
 # With Docker
 docker run --rm -v "$PWD:/code" gerion-cli sast-scan /code
@@ -121,7 +123,7 @@ When a scan completes, output is dispatched according to this priority:
 Runs all four scan types sequentially and aggregates the results:
 
 ```sh
-poetry run gerion scan-all [CODE_PATH] [OPTIONS]
+uv run gerion scan-all [CODE_PATH] [OPTIONS]
 ```
 
 When `--output-file` or `--format` is set, individual scan outputs are suppressed and the combined results are handled at the end.
@@ -131,7 +133,7 @@ When `--output-file` or `--format` is set, individual scan outputs are suppresse
 Fetches findings from the API Gateway and renders a report:
 
 ```sh
-poetry run gerion report [PATH] [OPTIONS]
+uv run gerion report [PATH] [OPTIONS]
 ```
 
 | Option | Short | Description |
