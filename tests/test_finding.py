@@ -54,10 +54,10 @@ def test_redact_text_none():
 
 def test_redact_text_caps_revealed_part():
     """A 40-char token used to reveal 12 characters (30%) in the uploaded mitigation."""
-    token = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+    token = "tok_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
     redacted = redact_text(token)
 
-    assert redacted == "ghp_...[REDACTED]...Q7r8"
+    assert redacted == "tok_...[REDACTED]...Q7r8"
     visible = len(redacted) - len("...[REDACTED]...")
     assert visible <= 8
     for length in range(1, 200):
