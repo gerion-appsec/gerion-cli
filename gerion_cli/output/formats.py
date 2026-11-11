@@ -3,9 +3,11 @@ Output format functionality for Gerion CLI.
 """
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
+from gerion_cli.core.config import __version__
 from gerion_cli.core.logging import info, warning
 from gerion_cli.core.types import OutputFormat
 
@@ -74,6 +76,18 @@ def save_as_json(results: dict[str, Any], filename: str):
     with open(filename, 'w') as json_file:
         json_file.write(content)
     info(f"Results saved to {filename} (JSON format)")
+
+def _md_cve(value: Any) -> str:
+    """CVE field for display: SCA findings carry a list of ids."""
+    if isinstance(value, (list, tuple)):
+        return ', '.join(str(item) for item in value) or 'N/A'
+    return str(value) if value else 'N/A'
+
+
+def _md_cell(value: Any) -> str:
+    """Make a value safe for a Markdown table cell: no row breaks or column splits."""
+    return re.sub(r'\s*[\r\n]+\s*', ' ', str(value)).replace('|', '\\|')
+
 
 def save_as_markdown(results: dict[str, Any], filename: str):
     """Save results as Markdown format."""
@@ -144,14 +158,16 @@ def generate_markdown_content(results: dict[str, Any]) -> str:
                     'Info': '🔵'
                 }.get(severity_normalized, '⚪')
 
-                component = f"{finding.get('component_name', 'N/A')} {finding.get('component_version', '')}"
+                component = _md_cell(f"{finding.get('component_name', 'N/A')} {finding.get('component_version', '')}")
+                cve = _md_cell(_md_cve(finding.get('cve')))
+                file_path = _md_cell(finding.get('file_path', 'N/A'))
 
                 if has_premium:
-                    risk_score = finding.get('risk_score', 'N/A')
-                    reachability = finding.get('reachability', 'N/A')
-                    markdown_content += f"| {severity_emoji} {severity_normalized} | {risk_score} | {reachability} | {finding.get('cve', 'N/A')} | {component} | `{finding.get('file_path', 'N/A')}` |\n"
+                    risk_score = _md_cell(finding.get('risk_score', 'N/A'))
+                    reachability = _md_cell(finding.get('reachability', 'N/A'))
+                    markdown_content += f"| {severity_emoji} {severity_normalized} | {risk_score} | {reachability} | {cve} | {component} | `{file_path}` |\n"
                 else:
-                    markdown_content += f"| {severity_emoji} {severity_normalized} | {finding.get('cve', 'N/A')} | {component} | `{finding.get('file_path', 'N/A')}` |\n"
+                    markdown_content += f"| {severity_emoji} {severity_normalized} | {cve} | {component} | `{file_path}` |\n"
 
         else:  # Secrets
             # Check if any finding has confidence data
@@ -175,11 +191,11 @@ def generate_markdown_content(results: dict[str, Any]) -> str:
                     'Info': '🔵'
                 }.get(severity_normalized, '⚪')
 
-                title = finding.get('title', 'N/A')
-                file_line = f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}"
+                title = _md_cell(finding.get('title', 'N/A'))
+                file_line = _md_cell(f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}")
 
                 if has_premium:
-                    confidence = finding.get('confidence', 'N/A')
+                    confidence = _md_cell(finding.get('confidence', 'N/A'))
                     markdown_content += f"| {severity_emoji} {severity_normalized} | {confidence} | {title} | `{file_line}` |\n"
                 else:
                     markdown_content += f"| {severity_emoji} {severity_normalized} | {title} | `{file_line}` |\n"
@@ -223,7 +239,7 @@ def generate_markdown_content(results: dict[str, Any]) -> str:
             markdown_content += "\n"
 
             if scan_type == "SCA":
-                markdown_content += f"- **CVE**: {finding.get('cve', 'N/A')}\n"
+                markdown_content += f"- **CVE**: {_md_cve(finding.get('cve'))}\n"
                 markdown_content += f"- **Component**: {finding.get('component_name', 'N/A')} {finding.get('component_version', '')}\n"
 
             markdown_content += f"- **Description**: {sanitize_verbose_text(finding.get('description', 'N/A'))}\n"
@@ -243,15 +259,38 @@ def save_as_sarif(results: dict[str, Any], filename: str):
 
     info(f"Results saved to {filename} (SARIF format)")
 
+_SARIF_LEVELS = {
+    'CRITICAL': 'error',
+    'HIGH': 'error',
+    'MEDIUM': 'warning',
+    'LOW': 'note',
+    'INFO': 'note',
+}
+
+
+def _sarif_start_line(line_number: Any) -> int:
+    """SARIF requires an integer >= 1; scanners may give None, 0 or a string."""
+    try:
+        return max(1, int(line_number))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _as_list(value: Any) -> list:
+    if value is None:
+        return []
+    return list(value) if isinstance(value, (list, tuple)) else [value]
+
+
 def generate_sarif_content(results: dict[str, Any]) -> dict[str, Any]:
-    """Generate SARIF content from results."""
-    metadata = results.get('metadata', {})  # noqa: F841
+    """Generate SARIF 2.1.0 content from results."""
+    metadata = results.get('metadata', {})
     findings = results.get('findings', [])
 
-    # Determine scan type from findings
-    scan_type = "Security"
-    if findings:
-        scan_type = findings[0].get('scan_type', 'Security')
+    # Scan type from metadata ('All' for scan-all), else from the findings
+    scan_type = metadata.get('scan_type') or "Security"
+    if not metadata.get('scan_type') and findings:
+        scan_type = findings[0].get('scan_type') or 'Security'
 
     sarif_data = {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
@@ -261,14 +300,14 @@ def generate_sarif_content(results: dict[str, Any]) -> dict[str, Any]:
                 "tool": {
                     "driver": {
                         "name": f"Gerion {scan_type} Scanner",
-                        "version": "1.0.0",
+                        "version": __version__,
                         "informationUri": "https://gerion-appsec.com"
                     }
                 },
                 "invocations": [
                     {
                         "executionSuccessful": True,
-                        "startTimeUtc": datetime.now().isoformat() + "Z"
+                        "startTimeUtc": datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
                     }
                 ],
                 "results": []
@@ -278,42 +317,40 @@ def generate_sarif_content(results: dict[str, Any]) -> dict[str, Any]:
 
     # Convert findings to SARIF format
     for finding in findings:
-        severity = finding.get('severity', 'Info')
-        sarif_level = {
-            'Critical': 'error',
-            'High': 'error',
-            'Medium': 'warning',
-            'Low': 'note',
-            'Info': 'note'
-        }.get(severity, 'note')
+        severity = str(finding.get('severity') or 'INFO').upper()
+        finding_id = finding.get('finding_id') or 'unknown'
 
         sarif_result = {
-            "ruleId": finding.get('finding_id', 'unknown'),
-            "level": sarif_level,
+            "ruleId": finding_id,
+            "level": _SARIF_LEVELS.get(severity, 'note'),
             "message": {
-                "text": finding.get('description', 'No description available')
+                "text": finding.get('description') or finding.get('title') or 'No description available'
             },
             "locations": [
                 {
                     "physicalLocation": {
                         "artifactLocation": {
-                            "uri": finding.get('file_path', 'unknown')
+                            "uri": quote(str(finding.get('file_path') or 'unknown'), safe='/')
                         },
                         "region": {
-                            "startLine": finding.get('line_number', 1),
+                            "startLine": _sarif_start_line(finding.get('line_number')),
                             "startColumn": 1
                         }
                     }
                 }
-            ]
+            ],
+            # Stable identity across runs so code scanning tracks the same alert
+            "partialFingerprints": {
+                "gerionFindingId/v1": finding_id
+            }
         }
 
         # Add additional properties
         properties = {}
         if finding.get('cve'):
-            properties['cve'] = finding.get('cve')
+            properties['cve'] = _as_list(finding.get('cve'))
         if finding.get('component_name'):
-            properties['component'] = f"{finding.get('component_name')} {finding.get('component_version', '')}"
+            properties['component'] = f"{finding.get('component_name')} {finding.get('component_version') or ''}".strip()
         if finding.get('mitigation'):
             properties['mitigation'] = finding.get('mitigation')
 
