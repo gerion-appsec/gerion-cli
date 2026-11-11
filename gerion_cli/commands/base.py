@@ -1,22 +1,26 @@
 import time
-import typer
-from typing import Callable, Any, Dict, List, Optional
+from collections.abc import Callable
 from importlib.metadata import entry_points
+from typing import Any
+
+import typer
+
+from gerion_cli.api import send_to_api
 from gerion_cli.core import (
-    get_metadata,
+    CLIENT_ID,
     LogLevel,
     OutputFormat,
-    set_log_level,
-    info,
-    warning,
-    error,
-    panel,
-    debug,
     SecretString,
-    CLIENT_ID
+    debug,
+    error,
+    get_metadata,
+    info,
+    panel,
+    set_log_level,
+    warning,
 )
-from gerion_cli.api import send_to_api
-from gerion_cli.output import save_to_file, findings_table
+from gerion_cli.output import findings_table, save_to_file
+
 
 def _discover_enrichers():
     """Discover and instantiate premium enrichers via entry_points."""
@@ -34,12 +38,12 @@ def run_scan(
     scan_type: str,
     tool_name: str,
     tool_runner: Callable[..., Any],
-    tool_parser: Callable[[Any, Dict[str, Any]], List[Dict[str, Any]]],
+    tool_parser: Callable[[Any, dict[str, Any]], list[dict[str, Any]]],
     code_path: str,
-    api_url: Optional[str],
-    client_id: Optional[str],
-    api_key: Optional[str],
-    output_file: Optional[str],
+    api_url: str | None,
+    client_id: str | None,
+    api_key: str | None,
+    output_file: str | None,
     format: OutputFormat,
     timeout: int,
     log_level: LogLevel,
@@ -52,14 +56,14 @@ def run_scan(
     api_key_string = SecretString.from_typer_option(api_key)
     # Use default client_id if not provided
     effective_client_id = client_id or CLIENT_ID
-    
+
     info(f"Starting {scan_type} scan...")
     debug(f"Scanning code path: {code_path}")
-    
+
     metadata = get_metadata(code_path=code_path)
     metadata['scan_type'] = scan_type
     debug("Metadata collected successfully")
-    
+
     info(f"Running {tool_name} scan...")
 
     # Run the tool with provided arguments
@@ -68,7 +72,7 @@ def run_scan(
         tool_output = tool_runner(code_path, timeout=timeout, **runner_kwargs)
     except Exception as e:
         error(f"Error running {scan_type} tool: {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1)  # noqa: B904
     finally:
         scan_duration = round(time.time() - start_time, 2)
         metadata['scan_duration'] = scan_duration
@@ -78,7 +82,7 @@ def run_scan(
         raise typer.Exit(1)
 
     info(f"Found {len(tool_output)} potential issues in {scan_duration}s")
-    
+
     # Parse findings
     findings = tool_parser(tool_output, metadata)
 
@@ -89,16 +93,16 @@ def run_scan(
         for enricher in enrichers:
             try:
                 findings = enricher.enrich(
-                    findings, 
-                    code_path, 
-                    scan_type, 
+                    findings,
+                    code_path,
+                    scan_type,
                     raw_output=tool_output
                 )
             except Exception as e:
                 warning(f"Enricher failed: {e}")
 
     results = {'metadata': metadata, 'findings': findings}
-    
+
     panel(
         f"{scan_type} Scan Summary",
         f"Repository: {metadata['repository_name']}\n"
@@ -108,7 +112,7 @@ def run_scan(
         f"Duration: {metadata['scan_duration']}s",
         "blue"
     )
-    
+
     # Output Priority:
     # 1. Output File -> Save to file (no table, no API)
     # 2. Format (explicitly requested) -> Print formatted output (no table, no API)
@@ -131,7 +135,7 @@ def run_scan(
 
         save_to_file(results, output_file, save_format)
         debug("Results saved to file. Console output and API sending suppressed.")
-    
+
     elif format:
         # If format is provided and output_file is NOT set, print to stdout.
         if format == OutputFormat.TABLE:

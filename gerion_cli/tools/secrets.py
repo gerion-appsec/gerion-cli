@@ -1,12 +1,14 @@
 """
 Secrets detection tool integration.
 """
-import subprocess
 import json
 import os
 import shutil
+import subprocess
 import tempfile
-from gerion_cli.core.logging import error, warning
+
+from gerion_cli.core.logging import error
+
 
 def run_secrets_tool(code_path, timeout=180):
     if not shutil.which("gitleaks"):
@@ -19,8 +21,8 @@ def run_secrets_tool(code_path, timeout=180):
 
     command = ["gitleaks", "dir", code_path, "--exit-code", "0", "-f", "json", "-r", report_path]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-        with open(report_path, 'r') as file:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)  # noqa: F841
+        with open(report_path) as file:
             data = json.load(file)
             return data
     except subprocess.TimeoutExpired:
@@ -31,4 +33,4 @@ def run_secrets_tool(code_path, timeout=180):
         return None
     finally:
         if os.path.exists(report_path):
-            os.remove(report_path) 
+            os.remove(report_path)

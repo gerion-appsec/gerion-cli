@@ -1,12 +1,14 @@
-import subprocess
 import json
 import os
 import shutil
+import subprocess
 import tempfile
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from gerion_cli.core.logging import error
 
-def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
+
+def run_sast_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]:
     """
     Run SAST scan using Opengrep.
     Findings are enriched by plugins if available.
@@ -37,13 +39,13 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
         "--disable-version-check", # Optimization: skip version check for speed
         code_path
     ]
-    
+
     try:
         # Opengrep returns non-zero on findings, so check=False
         subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout)
-        
+
         if os.path.exists(report_path):
-            with open(report_path, 'r') as file:
+            with open(report_path) as file:
                 data = json.load(file)
             if data:
                 results = data.get('results', [])
@@ -54,7 +56,7 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> List[Dict[str, Any]]:
         error(f"An error occurred while running SAST scan: {e}")
     finally:
         if os.path.exists(report_path):
-            try: os.remove(report_path)
-            except OSError: pass
+            try: os.remove(report_path)  # noqa: E701,SIM105
+            except OSError: pass  # noqa: E701
 
     return results

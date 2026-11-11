@@ -2,8 +2,10 @@
 Metadata handling for Gerion CLI.
 """
 import os
-import git
 from pathlib import Path
+
+import git
+
 
 def find_git_repo(path):
     """
@@ -13,7 +15,7 @@ def find_git_repo(path):
     Uses GitPython's search_parent_directories functionality in a controlled way.
     """
     path = Path(path).resolve()
-    
+
     # Try to find repo starting from the provided path
     # GitPython will search up from this path, but we limit it by only checking
     # the path itself and its immediate parent
@@ -22,7 +24,7 @@ def find_git_repo(path):
         # This will find the repo if path is inside a repo
         repo = git.Repo(str(path), search_parent_directories=True)
         repo_dir = repo.working_dir
-        
+
         # Verify that the found repo is within reasonable distance (path or parent)
         repo_path = Path(repo_dir).resolve()
         if repo_path == path or repo_path == path.parent:
@@ -30,7 +32,7 @@ def find_git_repo(path):
         # If repo is further up, don't use it (we only want 1 level up max)
     except (git.InvalidGitRepositoryError, git.NoSuchPathError):
         pass
-    
+
     # If not found, try the parent directory directly
     parent = path.parent
     if parent != path:  # parent != path means not at root
@@ -39,7 +41,7 @@ def find_git_repo(path):
             return repo.working_dir
         except (git.InvalidGitRepositoryError, git.NoSuchPathError):
             pass
-    
+
     return None
 
 def _detect_cicd_platform():
@@ -88,7 +90,7 @@ def get_metadata(code_path=None):
         base_path = Path(code_path).resolve()
         # Find the Git repository root (might be a parent directory)
         git_repo_path = find_git_repo(base_path)
-        if git_repo_path:
+        if git_repo_path:  # noqa: SIM108
             repo_path = git_repo_path
         else:
             repo_path = str(base_path)
@@ -105,13 +107,13 @@ def get_metadata(code_path=None):
         "commit_author": None,
         "cicd_platform": _detect_cicd_platform(),
     }
-    
+
     # Try to detect Git repository
     # Use search_parent_directories=False to prevent searching up indefinitely
     try:
         repo = git.Repo(repo_path, search_parent_directories=False)
         commit = repo.head.commit
-        
+
         # Extract repository name from remote origin
         repo_name = "local"
         try:
@@ -121,7 +123,7 @@ def get_metadata(code_path=None):
                 clean_url = origin_url
                 if clean_url.endswith('.git'):
                     clean_url = clean_url[:-4]
-                
+
                 # Handle SSH URLs (git@domain:path)
                 if clean_url.startswith('git@'):
                     parts = clean_url.split(':')
@@ -136,10 +138,10 @@ def get_metadata(code_path=None):
                         repo_name = parts[-1]
         except Exception:
             repo_name = os.path.basename(repo.working_dir)
-        
+
         # Use the code_path if provided, otherwise use repo working dir
         final_code_path = str(code_path) if code_path else repo.working_dir
-        
+
         metadata.update({
             "repository_name": repo_name,
             "branch_name": repo.active_branch.name,
@@ -148,7 +150,7 @@ def get_metadata(code_path=None):
             "commit_hash": commit.hexsha,
             "commit_author": commit.author.name
         })
-    except Exception:
+    except Exception:  # noqa: S110
         pass
 
     # Override with CI/CD environment variables
@@ -178,7 +180,7 @@ def get_metadata(code_path=None):
             "commit_hash": os.getenv("GIT_COMMIT"),
             "commit_author": os.getenv("GIT_COMMITTER_NAME"),
         })
-    
+
     if os.getenv("GITLAB_CI"):
         metadata.update({
             "repository_name": os.getenv("CI_PROJECT_NAME"),
@@ -188,7 +190,7 @@ def get_metadata(code_path=None):
             "commit_hash": os.getenv("CI_COMMIT_SHA"),
             "commit_author": os.getenv("CI_COMMIT_AUTHOR")
         })
-    
+
     # Override with manual environment variables
     manual_updates = {}
     if os.getenv("GERION_REPO_NAME"):
@@ -199,8 +201,8 @@ def get_metadata(code_path=None):
         manual_updates["commit_hash"] = os.getenv("GERION_COMMIT_HASH")
     if os.getenv("GERION_BUILD_ID"):
         manual_updates["build_id"] = os.getenv("GERION_BUILD_ID")
-    
+
     if manual_updates:
         metadata.update(manual_updates)
-    
-    return metadata 
+
+    return metadata

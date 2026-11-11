@@ -1,7 +1,8 @@
-import pytest
 import json
-import os
 from pathlib import Path
+
+import pytest
+
 
 @pytest.fixture
 def fixtures_dir():
@@ -12,7 +13,7 @@ def fixtures_dir():
 def load_fixture(fixtures_dir):
     """Load a JSON fixture file."""
     def _load(filename):
-        with open(fixtures_dir / filename, "r") as f:
+        with open(fixtures_dir / filename) as f:
             return json.load(f)
     return _load
 
