@@ -142,10 +142,12 @@ Every scan runs even if another one fails. The results of the scans that succeed
 | Code | Meaning |
 |------|---------|
 | `0` | The scan completed and, if `--fail-on` is set, no finding reached the threshold. |
-| `1` | A scanner could not run or failed (binary not in `PATH`, timeout, unexpected scanner exit code, missing or invalid report), the upload to the API failed, or the command could not complete. Findings are missing or were not stored, so the result must not be treated as clean. |
-| `2` | `--fail-on` is set and at least one finding has that severity or higher. Results are output or uploaded as usual first. |
+| `1` | A scanner could not run or failed (binary not in `PATH`, timeout, unexpected scanner exit code, missing or invalid report), or an unexpected command/output error prevented completion. |
+| `2` | Invalid command-line usage (Typer/Click validation). |
+| `3` | `--fail-on` is set and at least one finding has that severity or higher. Results are output or uploaded as usual first. |
+| `4` | Authentication or delivery to the API failed; the scan results were not stored. |
 
-Exit code `1` takes precedence over `2`. `scan-all` evaluates `--fail-on` across all completed scans. Findings with an unknown or missing severity count as `low`. Without API credentials the CLI runs in console mode, which is not a failure; with credentials, a failed upload still prints the findings table but exits `1`.
+For scan commands, precedence is `1 > 3 > 4`. All detected problems are reported even when a higher-priority code wins. `scan-all` evaluates `--fail-on` across all completed scans. Findings with an unknown or missing severity count as `low`. Without API credentials the CLI runs in console mode, which is not a failure; with credentials, a failed upload still prints the findings table but exits `4` unless a higher-priority condition applies.
 
 A project with nothing to scan (for example no dependency manifests for SCA) is a completed scan with no findings, not an error.
 

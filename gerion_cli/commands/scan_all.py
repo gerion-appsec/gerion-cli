@@ -8,8 +8,8 @@ from gerion_cli.commands.base import (
     FAIL_ON_OPTION,
     build_results,
     dispatch_results,
-    enforce_fail_on,
     execute_tool,
+    finish_scan,
     write_output_file,
 )
 from gerion_cli.core import (
@@ -64,7 +64,8 @@ def scan_all(
     When --output-file is provided, all findings are aggregated into a single file.
     When sending to API, each scan submits independently.
     Every scan runs (and uploads) even if another one fails; the command then exits with code 1.
-    With --fail-on, it exits with code 2 if any finding of the completed scans meets the threshold.
+    With --fail-on, it exits with code 3 if any finding of the completed scans meets the threshold.
+    Failed API delivery exits with code 4. Precedence is 1 > 3 > 4.
 
     Examples:
         # Scan current directory with all tools
@@ -141,9 +142,7 @@ def scan_all(
         error(f"{len(failed)} of {len(SCAN_CONFIGS)} scans failed: {', '.join(failed)}. Their findings are missing.")
     if upload_failed:
         error(f"Uploading the results of {', '.join(upload_failed)} to the API failed; they were not stored.")
-    if failed or upload_failed:
-        raise typer.Exit(1)
-    enforce_fail_on(all_findings, fail_on)
+    finish_scan(all_findings, fail_on, scan_failed=bool(failed), upload_failed=bool(upload_failed))
 
 
 def _run_scanner(config: dict[str, Any], code_path: str, timeout: int) -> tuple[Any, float] | Exception:

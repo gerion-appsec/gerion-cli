@@ -13,7 +13,7 @@ class OutputFormat(StrEnum):
 
 
 class FailOn(StrEnum):
-    """Minimum finding severity that makes a scan exit with code 2 (--fail-on)."""
+    """Minimum finding severity that makes a scan exit with code 3 (--fail-on)."""
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
