@@ -8,13 +8,40 @@ from gerion_cli.api.http import HTTP_TIMEOUT, check_api_url, response_excerpt, s
 from gerion_cli.core.logging import debug, error, success
 from gerion_cli.core.types import SecretString
 
+# JWTs obtained in this process, by (api_url, client_id): scan-all uploads four scans
+# and should authenticate (and send the API key) once, not four times.
+_token_cache: dict[tuple[str, str], str] = {}
+
+
+def _get_token(api_url: str, client_id: str, api_key: SecretString) -> str | None:
+    """A JWT for (api_url, client_id): the cached one, or a new one. Failures are not cached."""
+    key = (api_url, client_id)
+    token = _token_cache.get(key)
+    if token:
+        debug("Reusing the API token obtained earlier in this run.")
+        return token
+    token = authenticate_with_api(api_url, client_id, api_key)
+    if token:
+        _token_cache[key] = token
+    return token
+
+
+def _post_findings(findings_url: str, token: str, api_data: dict) -> httpx.Response:
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    return httpx.post(
+        findings_url, headers=headers, json=api_data, follow_redirects=True, verify=ssl_verify(), timeout=HTTP_TIMEOUT
+    )
+
 
 def send_to_api(results, api_url: str, client_id: str, api_key: SecretString):
     """
     Send results to the API Gateway with JWT authentication.
     
-    Uses M2M API key authentication to get a JWT token, then sends findings
-    to the API Gateway findings endpoint.
+    Uses M2M API key authentication to get a JWT token (reused for the rest of the
+    run), then sends findings to the API Gateway findings endpoint.
     """
     # Check if we have all required credentials
     if not all([api_url, client_id, api_key]):
@@ -26,8 +53,8 @@ def send_to_api(results, api_url: str, client_id: str, api_key: SecretString):
 
     debug("Starting M2M API authentication...")
 
-    # First authenticate to get JWT token using M2M API key
-    token = authenticate_with_api(api_url, client_id, api_key)
+    # Authenticate to get a JWT token using the M2M API key (once per run)
+    token = _get_token(api_url, client_id, api_key)
 
     if not token:
         error("Failed to authenticate with API Gateway. Cannot send results.")
@@ -44,16 +71,20 @@ def send_to_api(results, api_url: str, client_id: str, api_key: SecretString):
 
     # Send findings to API Gateway (URL and TLS settings were validated by authentication)
     findings_url = f'{check_api_url(api_url)}/api/v1/findings'
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
 
     try:
         debug("Sending findings to API Gateway...")
-        response = httpx.post(
-            findings_url, headers=headers, json=api_data, follow_redirects=True, verify=ssl_verify(), timeout=HTTP_TIMEOUT
-        )
+        response = _post_findings(findings_url, token, api_data)
+
+        if response.status_code == 401:
+            # The cached token may have expired or been revoked: authenticate again, once.
+            debug("API token rejected; re-authenticating once.")
+            _token_cache.pop((api_url, client_id), None)
+            token = _get_token(api_url, client_id, api_key)
+            if not token:
+                error("Failed to authenticate with API Gateway. Cannot send results.")
+                return False
+            response = _post_findings(findings_url, token, api_data)
 
         if response.status_code >= 200 and response.status_code < 300:
             success("Data sent to API Gateway successfully.")

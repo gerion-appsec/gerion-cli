@@ -1,5 +1,7 @@
 import os
 import stat
+import subprocess
+import time
 
 import pytest
 import typer
@@ -82,6 +84,82 @@ def test_timeout_raises(fake_tool, monkeypatch):
     monkeypatch.setenv("FAKE_SLEEP", "5")
     with pytest.raises(ToolError, match="timed out"):
         run_tool("faketool", lambda report_path: ["faketool", report_path], timeout=1)
+
+
+SPAWNING_TOOL = """#!/bin/sh
+# Like opengrep (wrapper -> opengrep.bin): the real work happens in a child process.
+sleep 30 &
+echo "$!" > "$1"
+wait
+"""
+
+
+def _process_gone(pid):
+    """True once pid has exited (a zombie waiting for init to reap it counts as gone)."""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().split(")")[-1].split()[0] == "Z"
+    except FileNotFoundError:
+        return True
+
+
+def _assert_child_killed(pid_file):
+    pid = int(pid_file.read_text())
+    deadline = time.monotonic() + 3
+    while not _process_gone(pid) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert _process_gone(pid), "the scanner's child process outlived it"
+
+
+@pytest.fixture
+def spawning_tool(tmp_path, monkeypatch):
+    if not os.path.isdir("/proc"):
+        pytest.skip("needs /proc")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    script = bin_dir / "spawningtool"
+    script.write_text(SPAWNING_TOOL)
+    script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    return tmp_path / "child.pid"
+
+
+def test_timeout_kills_the_scanner_child_processes(spawning_tool):
+    with pytest.raises(ToolError, match="timed out"):
+        run_tool("spawningtool", lambda report_path: ["spawningtool", str(spawning_tool)], timeout=1)
+    _assert_child_killed(spawning_tool)
+
+
+def test_interrupt_kills_the_scanner_child_processes(spawning_tool, monkeypatch):
+    real_communicate = subprocess.Popen.communicate
+
+    def interrupted(self, timeout=None):
+        while not spawning_tool.exists() or not spawning_tool.read_text().strip():
+            time.sleep(0.05)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        run_tool("spawningtool", lambda report_path: ["spawningtool", str(spawning_tool)], timeout=10)
+    monkeypatch.setattr(subprocess.Popen, "communicate", real_communicate)
+    _assert_child_killed(spawning_tool)
+
+
+def test_scanner_timeout_flags_are_not_passed(monkeypatch):
+    """opengrep --timeout is per rule and file, KICS --timeout per query: tool defaults apply."""
+    from gerion_cli.tools import iac, sast
+
+    argvs = []
+
+    def fake_run_tool(tool, build_command, **kwargs):
+        argvs.append(build_command("/tmp/report.json"))
+        return {}
+
+    for module in (iac, sast):
+        monkeypatch.setattr(module, "run_tool", fake_run_tool)
+    sast.run_sast_tool(".", timeout=300)
+    iac.run_iac_tool(".", timeout=300)
+    assert all("--timeout" not in argv for argv in argvs)
 
 
 def test_output_tail_strips_escapes_and_truncates():

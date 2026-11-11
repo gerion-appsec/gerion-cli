@@ -37,8 +37,9 @@ class _FakeClient:
 
 def _run_report(monkeypatch, tmp_path, findings):
     warnings = []
-    monkeypatch.setattr(report_module, "authenticate_with_api", lambda *a: "jwt")
-    monkeypatch.setattr(report_module.httpx, "Client", lambda **kw: _FakeClient(findings))
+    # report() imports these lazily, so patch them where they are defined.
+    monkeypatch.setattr("gerion_cli.api.auth.authenticate_with_api", lambda *a: "jwt")
+    monkeypatch.setattr("httpx.Client", lambda **kw: _FakeClient(findings))
     monkeypatch.setattr(report_module, "warning", warnings.append)
     output = tmp_path / "r.json"
     report_module.report(

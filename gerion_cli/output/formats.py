@@ -11,6 +11,9 @@ from gerion_cli.core.config import __version__
 from gerion_cli.core.logging import info, warning
 from gerion_cli.core.types import OutputFormat
 
+_MARKDOWN_CONTROL_CHARS = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]')
+_MARKDOWN_LINE_BREAKS = re.compile(r'\s*[\r\n]+\s*')
+
 
 def sanitize_verbose_text(text: str) -> str:
     """
@@ -23,7 +26,7 @@ def sanitize_verbose_text(text: str) -> str:
     # Convert to string and remove problematic characters
     text = str(text)
     # Remove control characters that could break Markdown
-    text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+    text = _MARKDOWN_CONTROL_CHARS.sub('', text)
 
     return text
 
@@ -86,7 +89,7 @@ def _md_cve(value: Any) -> str:
 
 def markdown_cell(value: Any) -> str:
     """Make a value safe for a Markdown table cell: no row breaks or column splits."""
-    return re.sub(r'\s*[\r\n]+\s*', ' ', str(value)).replace('|', '\\|')
+    return _MARKDOWN_LINE_BREAKS.sub(' ', str(value)).replace('|', '\\|')
 
 
 def save_as_markdown(results: dict[str, Any], filename: str):

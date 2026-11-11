@@ -1,32 +1,133 @@
 import os
-from unittest.mock import MagicMock, patch
+import subprocess
+from unittest.mock import patch
 
-from gerion_cli.core.metadata import get_metadata
+import pytest
+
+from gerion_cli.core import metadata as metadata_module
+from gerion_cli.core.metadata import find_git_repo, get_metadata
+
+# Deterministic identity and no user/system config for the test repositories.
+_GIT_ENV = {
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_AUTHOR_NAME": "Git User",
+    "GIT_AUTHOR_EMAIL": "git@example.com",
+    "GIT_COMMITTER_NAME": "Committer",
+    "GIT_COMMITTER_EMAIL": "committer@example.com",
+}
 
 
-@patch("gerion_cli.core.metadata.git.Repo")
-@patch.dict(os.environ, {}, clear=True)
-def test_get_metadata_git(mock_repo_cls):
-    """Test metadata extraction from mocked Git repository."""
-    # Setup mock repo
-    mock_repo = MagicMock()
-    mock_repo.working_dir = "/mock/repo"
-    mock_repo.head.is_detached = False
-    mock_repo.active_branch.name = "feature-branch"
-    mock_repo.head.commit.hexsha = "deadbeef123456"
-    mock_repo.head.commit.author.name = "Git User"
-    mock_repo.remotes.origin.url = "git@github.com:myorg/myrepo.git"
+def _git(repo, *args):
+    env = {**os.environ, **_GIT_ENV}
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], env=env, capture_output=True, text=True, check=True
+    ).stdout.strip()
 
-    mock_repo_cls.side_effect = lambda p, search_parent_directories=False: mock_repo
 
-    with patch("os.getcwd", return_value="/mock/repo"):
-        metadata = get_metadata()
+def _make_repo(path, commit=True, origin=None, branch="feature-branch"):
+    path.mkdir(parents=True, exist_ok=True)
+    _git(path, "init", "-q", "-b", branch)
+    if commit:
+        (path / "f.txt").write_text("x")
+        _git(path, "add", "f.txt")
+        _git(path, "commit", "-q", "-m", "init")
+    if origin:
+        _git(path, "remote", "add", "origin", origin)
+    return path
+
+
+@pytest.fixture(autouse=True)
+def _isolated_git_config(monkeypatch):
+    # get_metadata runs git with the inherited environment: keep the user's
+    # config (e.g. log.showSignature) out of the tests.
+    for key, value in _GIT_ENV.items():
+        if key.startswith("GIT_CONFIG"):
+            monkeypatch.setenv(key, value)
+
+
+def test_get_metadata_git(tmp_path, monkeypatch):
+    """Metadata extraction from a real Git repository (cwd is the repository root)."""
+    repo = _make_repo(tmp_path / "work", origin="git@github.com:myorg/myrepo.git")
+    sha = _git(repo, "rev-parse", "HEAD")
+    for var in ("GITHUB_SERVER_URL", "JENKINS_URL", "GITLAB_CI", "GERION_REPO_NAME", "GERION_BRANCH_NAME",
+                "GERION_COMMIT_HASH", "GERION_BUILD_ID"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.chdir(repo)
+
+    metadata = get_metadata()
 
     assert metadata["repository_name"] == "myrepo"
     assert metadata["branch_name"] == "feature-branch"
-    assert metadata["commit_hash"] == "deadbeef123456"
+    assert metadata["commit_hash"] == sha
     assert metadata["commit_author"] == "Git User"
-    assert metadata["code_path"] == "/mock/repo"
+    assert metadata["code_path"] == str(repo.resolve())
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_get_metadata_subdirectory_uses_parent_repo(tmp_path):
+    repo = _make_repo(tmp_path / "proj", origin="https://github.com/org/proj.git")
+    (repo / "src").mkdir()
+    metadata = get_metadata(code_path=str(repo / "src"))
+    assert metadata["repository_name"] == "proj"
+    assert metadata["code_path"] == str(repo / "src")
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_find_git_repo_ignores_repos_more_than_one_level_up(tmp_path):
+    repo = _make_repo(tmp_path / "proj")
+    deep = repo / "a" / "b"
+    deep.mkdir(parents=True)
+    assert find_git_repo(deep) is None
+    assert find_git_repo(repo / "a") == str(repo.resolve())
+    assert get_metadata(code_path=str(deep))["commit_hash"] is None
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_get_metadata_without_origin_uses_directory_name(tmp_path):
+    repo = _make_repo(tmp_path / "my-project")
+    metadata = get_metadata(code_path=str(repo))
+    assert metadata["repository_name"] == "my-project"
+    assert metadata["branch_name"] == "feature-branch"
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_get_metadata_not_a_repository(tmp_path):
+    metadata = get_metadata(code_path=str(tmp_path))
+    assert metadata["repository_name"] == "local"
+    assert metadata["branch_name"] == "local"
+    assert metadata["build_id"] == "0"
+    assert metadata["commit_hash"] is None
+    assert metadata["commit_author"] is None
+
+
+def test_get_metadata_without_git_installed(tmp_path, monkeypatch):
+    repo = _make_repo(tmp_path / "proj")
+    for var in ("GITHUB_SERVER_URL", "JENKINS_URL", "GITLAB_CI", "GERION_REPO_NAME", "GERION_COMMIT_HASH"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path / "no-bin"))
+    metadata = get_metadata(code_path=str(repo))
+    assert metadata["repository_name"] == "local"
+    assert metadata["commit_hash"] is None
+
+
+def test_git_runs_without_prompts_or_optional_locks(monkeypatch):
+    seen = {}
+
+    def fake_run(argv, **kwargs):
+        seen.update(argv=argv, **kwargs)
+        return subprocess.CompletedProcess(argv, 0, stdout="out\n")
+
+    monkeypatch.setenv("GIT_DIR", "/elsewhere/.git")
+    monkeypatch.setattr(metadata_module.subprocess, "run", fake_run)
+    assert metadata_module._git("/repo", "config", "--get", "remote.origin.url") == "out"
+    assert seen["argv"] == ["git", "-C", "/repo", "config", "--get", "remote.origin.url"]
+    assert seen["env"]["GIT_TERMINAL_PROMPT"] == "0"
+    assert seen["env"]["GIT_OPTIONAL_LOCKS"] == "0"
+    assert "GIT_DIR" not in seen["env"]
+    assert seen["stdin"] is subprocess.DEVNULL
+    assert seen["timeout"]
+
 
 @patch.dict(os.environ, {
     "GITHUB_SERVER_URL": "https://github.com",
@@ -62,30 +163,21 @@ def test_get_metadata_manual_override():
 @patch.dict(os.environ, {}, clear=True)
 def test_get_metadata_detached_head_keeps_repo_and_commit(tmp_path):
     """CI checkouts (git checkout <sha>) have no branch; the rest must not be lost."""
-    import git
+    repo = _make_repo(tmp_path / "work", origin="git@github.com:myorg/myrepo.git")
+    sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "--detach", sha)
 
-    repo = git.Repo.init(tmp_path)
-    (tmp_path / "f.txt").write_text("x")
-    repo.index.add(["f.txt"])
-    actor = git.Actor("CI Author", "ci@example.com")
-    sha = repo.index.commit("init", author=actor, committer=actor).hexsha
-    repo.create_remote("origin", "git@github.com:myorg/myrepo.git")
-    repo.git.checkout(sha)  # detach
-    assert repo.head.is_detached
-
-    metadata = get_metadata(code_path=str(tmp_path))
+    metadata = get_metadata(code_path=str(repo))
 
     assert metadata["repository_name"] == "myrepo"
     assert metadata["commit_hash"] == sha
-    assert metadata["commit_author"] == "CI Author"
+    assert metadata["commit_author"] == "Git User"
     assert metadata["branch_name"] == "local"
 
 
 @patch.dict(os.environ, {}, clear=True)
 def test_get_metadata_repo_without_commits(tmp_path):
-    import git
-
-    git.Repo.init(tmp_path)
-    metadata = get_metadata(code_path=str(tmp_path))
+    _make_repo(tmp_path / "work", commit=False)
+    metadata = get_metadata(code_path=str(tmp_path / "work"))
     assert metadata["repository_name"] == "local"
     assert metadata["commit_hash"] is None

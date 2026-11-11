@@ -18,8 +18,6 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]:
         lambda report_path: [
             "opengrep", "scan",
             "--config", "auto",
-            # Allow 10s buffer for CLI overhead
-            "--timeout", str(max(1, timeout - 10)),
             "--json",
             "--output", report_path,
             "--disable-version-check",  # Optimization: skip version check for speed

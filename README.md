@@ -23,6 +23,7 @@ A unified command-line interface for running security scans on codebases. Gerion
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
+- `git` in `PATH` to read repository metadata (repository, branch, commit, author); without it scans still run with default metadata
 - Linux or macOS, x86_64 or arm64 (scanner binaries are downloaded for your platform and verified against pinned SHA-256 checksums)
 - [Go](https://go.dev/doc/install) 1.26.2+ to build KICS from source (it publishes no prebuilt binaries)
 
@@ -123,11 +124,13 @@ When a scan completes, output is dispatched according to this priority:
 
 ### Scan all
 
-Runs all four scan types sequentially and aggregates the results:
+Runs all four scan types and aggregates the results:
 
 ```sh
 uv run gerion scan-all [CODE_PATH] [OPTIONS]
 ```
+
+The four scanners run in parallel; their results are always parsed and reported in the same order (Secrets, SCA, IaC, SAST). Each scan keeps its own `scan_duration`, while the summary and the aggregated metadata's `scan_duration` report the wall-clock time of the whole command. On small CI runners, `--sequential` runs the scanners one after another for a lower peak CPU and memory use. `--timeout` applies to each scanner.
 
 When `--output-file` or `--format` is set, individual scan outputs are suppressed and the combined results are handled at the end. The output format is inferred from the file extension exactly as for single scans.
 

@@ -1,3 +1,5 @@
+import time
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from typing import Any
 
 import typer
@@ -25,6 +27,7 @@ from gerion_cli.tools import (
     run_sca_tool,
     run_secrets_tool,
 )
+from gerion_cli.tools._runner import kill_running_tools
 
 SCAN_CONFIGS = [
     {"scan_type": "Secrets", "tool_name": "Gitleaks", "tool_runner": run_secrets_tool, "tool_parser": parse_secrets_tool_output},
@@ -41,12 +44,14 @@ def scan_all(
     output_file: str = typer.Option(None, "--output-file", "-o", help="Save aggregated results to a single file (disables API sending)"),
     format: OutputFormat = typer.Option(None, "--format", "-f", help="Output format for file saving or stdout (json, markdown, sarif)"),
     timeout: int = typer.Option(180, "--timeout", "-t", help="Tool execution timeout in seconds (per scan)"),
+    sequential: bool = typer.Option(False, "--sequential", help="Run the scanners one after another instead of in parallel (lower peak CPU and memory)"),
     log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level")
 ):
     """
-    Run all security scans (Secrets, SCA, IaC, SAST) sequentially.
+    Run all security scans (Secrets, SCA, IaC, SAST).
 
-    This command runs Gitleaks, OSV-Scanner, KICS, and Opengrep in sequence.
+    This command runs Gitleaks, OSV-Scanner, KICS, and Opengrep in parallel (one after
+    another with --sequential). Results are always reported in that fixed order.
     When --output-file is provided, all findings are aggregated into a single file.
     When sending to API, each scan submits independently.
     Every scan runs even if another one fails; the command then exits with code 1.
@@ -67,6 +72,7 @@ def scan_all(
     set_log_level(log_level)
     api_key_string = SecretString.from_typer_option(api_key)
     effective_client_id = client_id or CLIENT_ID
+    started = time.monotonic()
 
     # When output_file or format is set, individual scans only collect results —
     # scan_all handles aggregation and output at the end.
@@ -76,8 +82,11 @@ def scan_all(
     completed: list[dict[str, Any]] = []
     failed: list[str] = []
 
-    for config in SCAN_CONFIGS:
-        results = _run_one_scan(config, code_path, timeout, base_metadata)
+    outcomes = _execute_scans(code_path, timeout, sequential)
+
+    # Parse, enrich and emit in the fixed order, whatever order the scanners finished in.
+    for config, outcome in zip(SCAN_CONFIGS, outcomes, strict=True):
+        results = _build_one_scan(config, outcome, code_path, base_metadata)
         if results is None:
             failed.append(config["scan_type"])
             continue
@@ -86,7 +95,7 @@ def scan_all(
             dispatch_results(results, config["scan_type"], api_url, effective_client_id, api_key_string, None, None)
 
     all_findings = [finding for results in completed for finding in results['findings']]
-    total_duration = round(sum(results['metadata']['scan_duration'] for results in completed), 2)
+    total_duration = round(time.monotonic() - started, 2)
 
     # Aggregated output routing (mirrors base.py priority for individual scans).
     # Partial results are still emitted; the exit code reports the failed scans.
@@ -119,14 +128,51 @@ def scan_all(
         raise typer.Exit(1)
 
 
-def _run_one_scan(
-    config: dict[str, Any], code_path: str, timeout: int, base_metadata: dict[str, Any]
-) -> dict[str, Any] | None:
-    """Run, parse and enrich one scan; None if it failed (the error is logged)."""
-    scan_type = config["scan_type"]
-    info(f"Starting {scan_type} scan...")
+def _run_scanner(config: dict[str, Any], code_path: str, timeout: int) -> tuple[Any, float] | Exception:
+    """Run one scanner; its (raw output, duration), or the exception if it failed."""
+    info(f"Starting {config['scan_type']} scan...")
     try:
-        tool_output, duration = execute_tool(config["tool_name"], config["tool_runner"], code_path, timeout)
+        return execute_tool(config["tool_name"], config["tool_runner"], code_path, timeout)
+    except Exception as e:
+        return e
+
+
+def _execute_scans(code_path: str, timeout: int, sequential: bool) -> list[tuple[Any, float] | Exception]:
+    """Run every scanner, concurrently unless `sequential`; outcomes in SCAN_CONFIGS order."""
+    if sequential:
+        return [_run_scanner(config, code_path, timeout) for config in SCAN_CONFIGS]
+
+    # The scanners are independent subprocesses: threads only wait on them.
+    executor = ThreadPoolExecutor(max_workers=len(SCAN_CONFIGS), thread_name_prefix="gerion-scan")
+    futures: list[Future] = []
+    try:
+        futures = [executor.submit(_run_scanner, config, code_path, timeout) for config in SCAN_CONFIGS]
+        wait(futures)
+        return [future.result() for future in futures]
+    except BaseException:
+        # Ctrl-C (or SIGTERM): the scanners run in their own sessions, so they must be
+        # killed explicitly. Repeat until every worker is done, in case one was still
+        # starting its scanner during the first pass.
+        for future in futures:
+            future.cancel()
+        while not all(future.done() for future in futures):
+            kill_running_tools()
+            wait(futures, timeout=0.1)
+        raise
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
+def _build_one_scan(
+    config: dict[str, Any], outcome: tuple[Any, float] | Exception, code_path: str, base_metadata: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Parse and enrich one scan's output; None if the scan failed (the error is logged)."""
+    scan_type = config["scan_type"]
+    if isinstance(outcome, Exception):
+        error(f"{scan_type} scan failed: {outcome}")
+        return None
+    tool_output, duration = outcome
+    try:
         metadata = {**base_metadata, 'scan_type': scan_type, 'scan_duration': duration}
         return build_results(scan_type, tool_output, config["tool_parser"], metadata, code_path)
     except Exception as e:
