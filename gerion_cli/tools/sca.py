@@ -3,7 +3,7 @@ SCA (Software Component Analysis) tool integration.
 """
 from typing import Any
 
-from gerion_cli.tools._runner import ToolError, run_tool
+from gerion_cli.tools._runner import ToolError, path_arg, run_tool
 
 # osv-scanner: 0 = no vulnerabilities, 1 = vulnerabilities found,
 # 128 = no package sources found (no report written), 127 = error.
@@ -21,7 +21,7 @@ def run_sca_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]:
             "--format", "json",
             "--output-file", report_path,
             "-r",  # Recursive scan
-            code_path,
+            path_arg(code_path),
         ],
         timeout=timeout,
         ok_exit_codes=OSV_OK_EXIT_CODES,

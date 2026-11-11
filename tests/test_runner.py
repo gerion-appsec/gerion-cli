@@ -140,3 +140,24 @@ def test_run_scan_exits_1_when_tool_fails(capsys):
 ])
 def test_resolve_file_format(filename, explicit, expected):
     assert resolve_file_format(filename, explicit) == expected
+
+
+@pytest.mark.parametrize(("module", "runner"), [
+    ("secrets", "run_secrets_tool"), ("sca", "run_sca_tool"), ("iac", "run_iac_tool"), ("sast", "run_sast_tool"),
+])
+def test_code_path_starting_with_dash_is_not_an_option(monkeypatch, module, runner):
+    """`gerion secrets-scan -- -v` ran `gitleaks dir -v`: verbose mode on the wrong directory."""
+    import importlib
+
+    tool_module = importlib.import_module(f"gerion_cli.tools.{module}")
+    argvs = []
+
+    def fake_run_tool(tool, build_command, **kwargs):
+        argvs.append(build_command("/tmp/report.json"))
+        return [] if module == "secrets" else {}
+
+    monkeypatch.setattr(tool_module, "run_tool", fake_run_tool)
+    getattr(tool_module, runner)("-v", timeout=5)
+
+    assert "-v" not in argvs[0]
+    assert os.path.join(".", "-v") in argvs[0]

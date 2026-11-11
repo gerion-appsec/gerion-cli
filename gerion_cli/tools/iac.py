@@ -5,7 +5,7 @@ import os
 import shutil
 from typing import Any
 
-from gerion_cli.tools._runner import ToolError, run_tool
+from gerion_cli.tools._runner import ToolError, path_arg, run_tool
 
 
 def _kics_command(code_path: str, report_path: str, timeout: int, queries_path: str | None) -> list[str]:
@@ -13,7 +13,7 @@ def _kics_command(code_path: str, report_path: str, timeout: int, queries_path: 
     report_dir, report_file = os.path.split(report_path)
     command = [
         "kics", "scan",
-        "--path", code_path,
+        "--path", path_arg(code_path),
         "--output-path", report_dir,
         "--output-name", os.path.splitext(report_file)[0],
         "--report-formats", "json",

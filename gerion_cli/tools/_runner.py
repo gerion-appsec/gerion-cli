@@ -5,6 +5,7 @@ Every failure raises ToolError: a scanner that did not run must never look like 
 clean scan.
 """
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -20,6 +21,11 @@ _UNSAFE_OUTPUT = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]|[\x00-\x08\x0b-\x1f\x7f]
 
 class ToolError(Exception):
     """A scanner could not run or did not complete; its result must not be trusted."""
+
+
+def path_arg(path: str) -> str:
+    """A path for a scanner argv: "./-x" instead of "-x", which would be parsed as an option."""
+    return os.path.join(".", path) if path.startswith("-") else path
 
 
 def output_tail(output: str | None, limit: int = OUTPUT_TAIL_CHARS) -> str:

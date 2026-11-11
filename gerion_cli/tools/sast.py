@@ -1,6 +1,6 @@
 from typing import Any
 
-from gerion_cli.tools._runner import ToolError, run_tool
+from gerion_cli.tools._runner import ToolError, path_arg, run_tool
 
 
 def run_sast_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]:
@@ -23,7 +23,7 @@ def run_sast_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]:
             "--json",
             "--output", report_path,
             "--disable-version-check",  # Optimization: skip version check for speed
-            code_path,
+            path_arg(code_path),
         ],
         timeout=timeout,
     )

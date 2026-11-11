@@ -3,7 +3,7 @@ Secrets detection tool integration.
 """
 from typing import Any
 
-from gerion_cli.tools._runner import ToolError, run_tool
+from gerion_cli.tools._runner import ToolError, path_arg, run_tool
 
 
 def run_secrets_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]:
@@ -11,7 +11,7 @@ def run_secrets_tool(code_path: str, timeout: int = 180) -> list[dict[str, Any]]
     # --exit-code 0: leaks found is still exit 0; any other code is an error.
     data = run_tool(
         "gitleaks",
-        lambda report_path: ["gitleaks", "dir", code_path, "--exit-code", "0", "-f", "json", "-r", report_path],
+        lambda report_path: ["gitleaks", "dir", path_arg(code_path), "--exit-code", "0", "-f", "json", "-r", report_path],
         timeout=timeout,
     )
     if not isinstance(data, list):
