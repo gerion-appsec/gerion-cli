@@ -11,11 +11,15 @@ from rich.table import Table
 from gerion_cli.api.auth import authenticate_with_api
 from gerion_cli.api.http import HTTP_TIMEOUT, check_api_url, ssl_verify
 from gerion_cli.core.config import CLIENT_ID
-from gerion_cli.core.logging import error, info, success, warning
+from gerion_cli.core.logging import LogLevel, debug, error, info, set_log_level, success, warning
 from gerion_cli.core.metadata import get_metadata
 from gerion_cli.core.types import SecretString
+from gerion_cli.output.formats import markdown_cell
 
 console = Console()
+
+# Maximum number of findings requested from the API in one report.
+REPORT_LIMIT = 1000
 
 class ReportFormat(str, Enum):  # noqa: UP042
     JSON = "json"
@@ -37,11 +41,13 @@ def report(
     active_only: bool = typer.Option(True, "--active-only/--all", help="Only show active findings (default) or all including mitigated/FP"),
     include_description: bool = typer.Option(True, "--include-description/--no-description", help="Include finding descriptions (default: True)"),
     include_mitigation: bool = typer.Option(True, "--include-mitigation/--no-mitigation", help="Include remediation/mitigation advice (default: True)"),
+    log_level: LogLevel = typer.Option(LogLevel.INFO, "--log-level", "-l", help="Set the logging level"),
 ):
     """
     Generate a security report for the current project or specified filters.
     """
     # 0. Set Effective Context
+    set_log_level(log_level)
 
     effective_api_url = api_url
     if not effective_api_url:
@@ -82,7 +88,7 @@ def report(
         "scan_type": scan_type,
         "severity": severity,
         "active_only": active_only,
-        "limit": 1000
+        "limit": REPORT_LIMIT
     }
 
     # Filter out None values
@@ -108,16 +114,21 @@ def report(
     if not findings:
         warning("No findings found for the specified filters.")
         return
+    if len(findings) >= REPORT_LIMIT:
+        warning(
+            f"The API returned the maximum of {REPORT_LIMIT} findings: the report is probably truncated. "
+            "Narrow it with --type, --severity, --repo or --branch."
+        )
 
     # 3. Sorting
     severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4, "UNKNOWN": 5}
     type_order = {"SAST": 0, "SCA": 1, "IAC": 2, "SECRETS": 3, "CONTAINER": 4, "UNKNOWN": 5}
 
     findings.sort(key=lambda f: (
-        f.get("repository_name", "").lower(),
-        f.get("branch_name", "").lower(),
-        type_order.get(f.get("scan_type", "UNKNOWN").upper(), 5),
-        severity_order.get(f.get("severity", "UNKNOWN").upper(), 5)
+        str(f.get("repository_name") or "").lower(),
+        str(f.get("branch_name") or "").lower(),
+        type_order.get(str(f.get("scan_type") or "UNKNOWN").upper(), 5),
+        severity_order.get(str(f.get("severity") or "UNKNOWN").upper(), 5)
     ))
 
     # 4. Handle Formats
@@ -223,16 +234,16 @@ def generate_markdown_report(findings, repo, branch, include_description, includ
     ]
 
     for f in findings:
-        sev = f.get("severity", "UNKNOWN").upper()
-        title = f.get("title", "N/A").replace("|", "\\|")
+        sev = str(f.get("severity") or "UNKNOWN").upper()
+        title = f.get("title") or "N/A"
         file = f"{f.get('file_path', 'N/A')}:{f.get('line_number', '')}"
         fid = f.get("finding_id", "N/A")
 
-        row = [sev, f.get("scan_type"), title, file, fid]
+        row = [sev, f.get("scan_type") or "N/A", title, file, fid]
         if not active_only:
             row.insert(0, f.get("status", "Active"))
 
-        lines.append("| " + " | ".join(row) + " |")
+        lines.append("| " + " | ".join(markdown_cell(cell) for cell in row) + " |")
 
         if include_description and f.get("description"):
             lines.append(f"> **Description:** {f.get('description')}  ")
@@ -240,6 +251,15 @@ def generate_markdown_report(findings, repo, branch, include_description, includ
             lines.append(f"> **Mitigation:** {f.get('mitigation')}  ")
 
     return "\n".join(lines)
+
+def severity_stats(findings: list[dict]) -> dict[str, int]:
+    """Findings per severity for the PDF summary grid (one box per key)."""
+    stats = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0, "UNKNOWN": 0}
+    for f in findings:
+        sev = str(f.get("severity") or "UNKNOWN").upper()
+        # Unexpected values would otherwise add extra boxes to the grid
+        stats[sev if sev in stats else "UNKNOWN"] += 1
+    return stats
 
 def generate_pdf_report(findings, repo, branch, output_path, include_description, include_mitigation, active_only):
     import os
@@ -326,12 +346,7 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
         from fpdf import FPDF
 
         # Calculate summary statistics
-        stats = {
-            "CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0, "UNKNOWN": 0
-        }
-        for f in findings:
-            sev = f.get("severity", "UNKNOWN").upper()
-            stats[sev] = stats.get(sev, 0) + 1
+        stats = severity_stats(findings)
 
         class GerionPDF(FPDF):
             def __init__(self, *args, **kwargs):
@@ -438,7 +453,9 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
         }
 
         for sev, count in stats.items():
-            if sev == "UNKNOWN": continue  # noqa: E701
+            # The grid has room for six boxes; UNKNOWN is only drawn when used.
+            if sev == "UNKNOWN" and not count:
+                continue
 
             pdf.set_fill_color(*sev_colors.get(sev, (200, 200, 200)))
             pdf.set_text_color(255)
@@ -471,7 +488,7 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
 
         for i, f in enumerate(findings, 1):
             status = f.get("status", "Active")
-            sev = f.get("severity", "UNKNOWN").upper()
+            sev = str(f.get("severity") or "UNKNOWN").upper()
             stype = sanitize_latin1(f.get("scan_type", "N/A"))
             title = sanitize_latin1(f.get("title", "N/A"))
             fid = f.get("finding_id", "N/A")  # noqa: F841
@@ -615,5 +632,5 @@ def generate_pdf_report(findings, repo, branch, output_path, include_description
     except Exception as e:
         error(f"Error generating PDF report: {str(e)}")
         import traceback
-        traceback.print_exc()
-        raise typer.Abort()  # noqa: B904
+        debug(traceback.format_exc())
+        raise typer.Abort() from None

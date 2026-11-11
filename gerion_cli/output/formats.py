@@ -84,7 +84,7 @@ def _md_cve(value: Any) -> str:
     return str(value) if value else 'N/A'
 
 
-def _md_cell(value: Any) -> str:
+def markdown_cell(value: Any) -> str:
     """Make a value safe for a Markdown table cell: no row breaks or column splits."""
     return re.sub(r'\s*[\r\n]+\s*', ' ', str(value)).replace('|', '\\|')
 
@@ -158,13 +158,13 @@ def generate_markdown_content(results: dict[str, Any]) -> str:
                     'Info': '🔵'
                 }.get(severity_normalized, '⚪')
 
-                component = _md_cell(f"{finding.get('component_name', 'N/A')} {finding.get('component_version', '')}")
-                cve = _md_cell(_md_cve(finding.get('cve')))
-                file_path = _md_cell(finding.get('file_path', 'N/A'))
+                component = markdown_cell(f"{finding.get('component_name', 'N/A')} {finding.get('component_version', '')}")
+                cve = markdown_cell(_md_cve(finding.get('cve')))
+                file_path = markdown_cell(finding.get('file_path', 'N/A'))
 
                 if has_premium:
-                    risk_score = _md_cell(finding.get('risk_score', 'N/A'))
-                    reachability = _md_cell(finding.get('reachability', 'N/A'))
+                    risk_score = markdown_cell(finding.get('risk_score', 'N/A'))
+                    reachability = markdown_cell(finding.get('reachability', 'N/A'))
                     markdown_content += f"| {severity_emoji} {severity_normalized} | {risk_score} | {reachability} | {cve} | {component} | `{file_path}` |\n"
                 else:
                     markdown_content += f"| {severity_emoji} {severity_normalized} | {cve} | {component} | `{file_path}` |\n"
@@ -191,11 +191,11 @@ def generate_markdown_content(results: dict[str, Any]) -> str:
                     'Info': '🔵'
                 }.get(severity_normalized, '⚪')
 
-                title = _md_cell(finding.get('title', 'N/A'))
-                file_line = _md_cell(f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}")
+                title = markdown_cell(finding.get('title', 'N/A'))
+                file_line = markdown_cell(f"{finding.get('file_path', 'N/A')}:{finding.get('line_number', 'N/A')}")
 
                 if has_premium:
-                    confidence = _md_cell(finding.get('confidence', 'N/A'))
+                    confidence = markdown_cell(finding.get('confidence', 'N/A'))
                     markdown_content += f"| {severity_emoji} {severity_normalized} | {confidence} | {title} | `{file_line}` |\n"
                 else:
                     markdown_content += f"| {severity_emoji} {severity_normalized} | {title} | `{file_line}` |\n"
