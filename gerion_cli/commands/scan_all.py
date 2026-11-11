@@ -126,7 +126,7 @@ def _run_one_scan(
     scan_type = config["scan_type"]
     info(f"Starting {scan_type} scan...")
     try:
-        tool_output, duration = execute_tool(scan_type, config["tool_name"], config["tool_runner"], code_path, timeout)
+        tool_output, duration = execute_tool(config["tool_name"], config["tool_runner"], code_path, timeout)
         metadata = {**base_metadata, 'scan_type': scan_type, 'scan_duration': duration}
         return build_results(scan_type, tool_output, config["tool_parser"], metadata, code_path)
     except Exception as e:

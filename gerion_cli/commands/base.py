@@ -37,7 +37,6 @@ def _discover_enrichers():
 
 
 def execute_tool(
-    scan_type: str,
     tool_name: str,
     tool_runner: Callable[..., Any],
     code_path: str,
@@ -192,7 +191,7 @@ def run_scan(
 
     try:
         tool_output, metadata['scan_duration'] = execute_tool(
-            scan_type, tool_name, tool_runner, code_path, timeout, **runner_kwargs
+            tool_name, tool_runner, code_path, timeout, **runner_kwargs
         )
     except ToolError as e:
         error(f"{scan_type} scan failed: {e}")
