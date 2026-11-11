@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 from collections.abc import Callable, Collection
@@ -34,6 +35,17 @@ def output_tail(output: str | None, limit: int = OUTPUT_TAIL_CHARS) -> str:
     if len(text) > limit:
         text = '...' + text[-limit:]
     return text
+
+
+def _kill_process_group(process: subprocess.Popen) -> None:
+    """Kill the scanner and every process it started (they share its process group)."""
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+    except ProcessLookupError:
+        pass
 
 
 def run_tool(
@@ -65,27 +77,36 @@ def run_tool(
     with tempfile.TemporaryDirectory(prefix="gerion-") as report_dir:
         report_path = Path(report_dir) / "report.json"
         command = build_command(str(report_path))
+        # The scanner gets its own session so that, on timeout or Ctrl-C, its worker
+        # processes (e.g. opengrep -> opengrep.bin) are killed with it instead of
+        # running on as orphans.
         try:
-            process = subprocess.run(
+            process = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 errors="replace",
-                timeout=timeout,
-                check=False,
+                start_new_session=True,
             )
-        except subprocess.TimeoutExpired:
-            raise ToolError(f"{tool} timed out after {timeout} seconds.") from None
         except OSError as e:
             raise ToolError(f"{tool} could not be started: {e}") from e
+        with process:
+            try:
+                output, _ = process.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _kill_process_group(process)
+                raise ToolError(f"{tool} timed out after {timeout} seconds.") from None
+            except BaseException:
+                _kill_process_group(process)
+                raise
 
         exit_code = process.returncode
         if exit_code in no_report_exit_codes:
             return None
         if exit_code not in ok_exit_codes:
-            raise ToolError(f"{tool} failed with exit code {exit_code}: {output_tail(process.stdout)}")
+            raise ToolError(f"{tool} failed with exit code {exit_code}: {output_tail(output)}")
 
         try:
             with open(report_path, encoding="utf-8") as report:
