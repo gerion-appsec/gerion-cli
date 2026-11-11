@@ -1,7 +1,8 @@
 import os
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from gerion_cli.core.metadata import get_metadata
+
 
 @patch("gerion_cli.core.metadata.git.Repo")
 @patch.dict(os.environ, {}, clear=True)
@@ -14,12 +15,12 @@ def test_get_metadata_git(mock_repo_cls):
     mock_repo.head.commit.hexsha = "deadbeef123456"
     mock_repo.head.commit.author.name = "Git User"
     mock_repo.remotes.origin.url = "git@github.com:myorg/myrepo.git"
-    
+
     mock_repo_cls.side_effect = lambda p, search_parent_directories=False: mock_repo
-    
+
     with patch("os.getcwd", return_value="/mock/repo"):
         metadata = get_metadata()
-    
+
     assert metadata["repository_name"] == "myrepo"
     assert metadata["branch_name"] == "feature-branch"
     assert metadata["commit_hash"] == "deadbeef123456"
@@ -38,7 +39,7 @@ def test_get_metadata_git(mock_repo_cls):
 def test_get_metadata_github_actions():
     """Test metadata extraction from GitHub Actions environment."""
     metadata = get_metadata()
-    
+
     assert metadata["repository_name"] == "ci-org/ci-repo"
     assert metadata["branch_name"] == "ci-branch"
     assert metadata["build_id"] == "42"
@@ -52,6 +53,6 @@ def test_get_metadata_github_actions():
 def test_get_metadata_manual_override():
     """Test manual environment variable overrides."""
     metadata = get_metadata()
-    
+
     assert metadata["repository_name"] == "manual-repo"
     assert metadata["branch_name"] == "manual-branch"

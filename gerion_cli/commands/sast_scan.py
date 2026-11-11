@@ -1,7 +1,8 @@
 import typer
-from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID
-from gerion_cli.tools import run_sast_tool, parse_sast_tool_output
+
 from gerion_cli.commands.base import run_scan
+from gerion_cli.core import CLIENT_ID, LogLevel, OutputFormat
+from gerion_cli.tools import parse_sast_tool_output, run_sast_tool
 
 
 def sast_scan(

@@ -1,13 +1,18 @@
 import typer
-from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID, info, panel
-from gerion_cli.output import save_to_file, print_formatted, findings_table
-from gerion_cli.tools import (
-    run_secrets_tool, parse_secrets_tool_output,
-    run_sca_tool, parse_sca_tool_output,
-    run_iac_tool, parse_iac_tool_output,
-    run_sast_tool, parse_sast_tool_output
-)
+
 from gerion_cli.commands.base import run_scan
+from gerion_cli.core import CLIENT_ID, LogLevel, OutputFormat, info, panel
+from gerion_cli.output import findings_table, print_formatted, save_to_file
+from gerion_cli.tools import (
+    parse_iac_tool_output,
+    parse_sast_tool_output,
+    parse_sca_tool_output,
+    parse_secrets_tool_output,
+    run_iac_tool,
+    run_sast_tool,
+    run_sca_tool,
+    run_secrets_tool,
+)
 
 SCAN_CONFIGS = [
     {"scan_type": "Secrets", "tool_name": "Gitleaks", "tool_runner": run_secrets_tool, "tool_parser": parse_secrets_tool_output},

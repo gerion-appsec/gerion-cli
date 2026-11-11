@@ -22,6 +22,7 @@ ENV/
 env.bak/
 venv.bak/
 gerion-cli-venv/
+.venv/
 
 # =====================
 # Python Tools & Caches
@@ -32,6 +33,7 @@ gerion-cli-venv/
 .cache
 .mypy_cache
 .pytest_cache
+.ruff_cache/
 .hypothesis
 
 # =====================
@@ -55,11 +57,6 @@ coverage.xml
 report.json
 output.json
 gerion-cli-*.json
-
-# =====================
-# Dependency Locks (regenerated in Docker build)
-# =====================
-poetry.lock
 
 # =====================
 # Editor & OS Files

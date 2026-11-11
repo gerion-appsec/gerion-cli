@@ -2,10 +2,13 @@
 HTTP client functionality for Gerion API.
 """
 import os
+
 import httpx
-from gerion_cli.core.types import SecretString
-from gerion_cli.core.logging import debug, error, success
+
 from gerion_cli.api.auth import authenticate_with_api
+from gerion_cli.core.logging import debug, error, success
+from gerion_cli.core.types import SecretString
+
 
 def send_to_api(results, api_url: str, client_id: str, api_key: SecretString):
     """
@@ -21,16 +24,16 @@ def send_to_api(results, api_url: str, client_id: str, api_key: SecretString):
         error("  - GERION_CLIENT_ID or --client-id")
         error("  - GERION_API_KEY or --api-key")
         return False
-    
+
     debug("Starting M2M API authentication...")
-    
+
     # First authenticate to get JWT token using M2M API key
     token = authenticate_with_api(api_url, client_id, api_key)
-    
+
     if not token:
         error("Failed to authenticate with API Gateway. Cannot send results.")
         return False
-    
+
     # Prepare the data according to the API Gateway schema
     # API Gateway accepts flexible format with findings_data or direct metadata/findings
     api_data = {
@@ -39,7 +42,7 @@ def send_to_api(results, api_url: str, client_id: str, api_key: SecretString):
             "findings": results['findings']
         }
     }
-    
+
     # Send findings to API Gateway
     findings_url = f'{api_url}/api/v1/findings'
     headers = {
@@ -64,4 +67,4 @@ def send_to_api(results, api_url: str, client_id: str, api_key: SecretString):
         return False
     except Exception as e:
         error(f"Unexpected Error: {e}")
-        return False 
+        return False

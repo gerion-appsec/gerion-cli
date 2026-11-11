@@ -1,7 +1,9 @@
 import typer
-from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID
-from gerion_cli.tools import run_sca_tool, parse_sca_tool_output
+
 from gerion_cli.commands.base import run_scan
+from gerion_cli.core import CLIENT_ID, LogLevel, OutputFormat
+from gerion_cli.tools import parse_sca_tool_output, run_sca_tool
+
 
 def sca_scan(
     code_path: str = typer.Argument(".", help="Path to the code directory to scan", show_default=True),

@@ -1,7 +1,9 @@
 import typer
-from gerion_cli.core import LogLevel, OutputFormat, CLIENT_ID
-from gerion_cli.tools import run_secrets_tool, parse_secrets_tool_output
+
 from gerion_cli.commands.base import run_scan
+from gerion_cli.core import CLIENT_ID, LogLevel, OutputFormat
+from gerion_cli.tools import parse_secrets_tool_output, run_secrets_tool
+
 
 def secrets_scan(
     code_path: str = typer.Argument(".", help="Path to the code directory to scan", show_default=True),

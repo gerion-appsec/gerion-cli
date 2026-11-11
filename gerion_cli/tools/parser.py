@@ -48,19 +48,19 @@ def generate_finding_template(metadata):
 def generate_unique_id(strings):
     # Concatenate all strings in the list
     concatenated_string = ''.join(strings)
-    
+
     # Encode the concatenated string to bytes (required for hashing)
     encoded_string = concatenated_string.encode('utf-8')
-    
+
     # Create a SHA-256 hash object
     sha256_hash = hashlib.sha256()
-    
+
     # Update the hash object with the encoded string
     sha256_hash.update(encoded_string)
-    
+
     # Get the hexadecimal representation of the hash and truncate it to 8 characters
     truncated_hash_hex = sha256_hash.hexdigest()[:12]
-    
+
     return truncated_hash_hex
 
 def redact_text(text, visible_percent=0.3):
@@ -70,14 +70,14 @@ def redact_text(text, visible_percent=0.3):
     """
     if not text or len(text) < 4:
         return text
-        
+
     length = len(text)
     visible_len = int(length * visible_percent)
-    if visible_len < 2: visible_len = 2 # Keep at least 1 char on each side if possible
-    
+    if visible_len < 2: visible_len = 2 # Keep at least 1 char on each side if possible  # noqa: E701
+
     # Split visible length between start and end
     side_len = visible_len // 2
-    
+
     return f"{text[:side_len]}...[REDACTED]...{text[-side_len:]}"
 
 SEVERITY_RANK = {
@@ -155,7 +155,7 @@ def parse_secrets_tool_output(output, metadata):
 
     Returns:
         A list of dictionaries representing the unique findings.
-    """    
+    """
     results = []
     seen_finding_ids = set()
     for f in output:
@@ -166,14 +166,14 @@ def parse_secrets_tool_output(output, metadata):
         description = f.get('Description') or f.get('description') or 'No description available'
         secret_value = f.get('Secret') or f.get('secret') or f.get('match') or 'unknown'
         start_line = f.get('StartLine') or f.get('start_line') or f.get('line') or 0
-        
-        template = generate_finding_template(metadata)   
+
+        template = generate_finding_template(metadata)
         # CRITICAL: ID must be generated from the RAW secret to ensure deduplication works
         finding_id = str(generate_unique_id([file_path, str(match_text), rule_id]))
-        
+
         # Redact secret for storage/display
         redacted_secret = redact_text(str(secret_value))
-        
+
         # Check if the finding_id has already been processed
         if finding_id not in seen_finding_ids:
             result = {
@@ -192,7 +192,7 @@ def parse_secrets_tool_output(output, metadata):
             final_finding = {**template, **result}
             results.append(final_finding)
             seen_finding_ids.add(finding_id)  # Mark this finding_id as processed
-        
+
     return results
 
 _GHSA_DESCRIPTION_KEYS = ('impact', 'details', 'summary')
@@ -350,7 +350,7 @@ def parse_sca_tool_output(output, metadata):
                     clean_pkg_version = pkg_version.replace('.*', '').replace('*', '')
                     if parse_version(clean_pkg_version) >= parse_version(component_fix):
                         continue
-                except Exception:
+                except Exception:  # noqa: S110
                     pass
 
             finding_id = str(generate_unique_id([source_path, pkg_name, pkg_version]))
@@ -414,7 +414,7 @@ def parse_sast_tool_output(output, metadata):
     """
     results = []
     seen_ids = set()
-    
+
     for item in output:
         # Opengrep specific fields
         rule_id = item.get('check_id', 'unknown')
@@ -423,7 +423,7 @@ def parse_sast_tool_output(output, metadata):
         extra = item.get('extra', {})
         message = extra.get('message', 'No description available')
         severity_raw = extra.get('severity', 'UNKNOWN').upper()
-        
+
         # Normalize Severity
         severity_map = {
             'ERROR': 'HIGH',
@@ -434,11 +434,11 @@ def parse_sast_tool_output(output, metadata):
         severity = severity_map.get(severity_raw, 'MEDIUM') # Default to Medium if unknown
         fix = extra.get('fix', None)
         cwe_list = extra.get('metadata', {}).get('cwe', [])
-        if isinstance(cwe_list, str): cwe_list = [cwe_list]
-        
+        if isinstance(cwe_list, str): cwe_list = [cwe_list]  # noqa: E701
+
         # Unique ID
         finding_id = str(generate_unique_id([file_path, str(start_line), rule_id]))
-        
+
         if finding_id not in seen_ids:
             template = generate_finding_template(metadata)
             result = {
@@ -457,9 +457,9 @@ def parse_sast_tool_output(output, metadata):
                 'cwe': cwe_list,
                 'cve': None
             }
-            
+
             final_finding = {**template, **result}
-            
+
             # Preserve reachability if already set by StructuralEngine
             if 'reachability' in item:
                  final_finding['reachability'] = item['reachability']
@@ -467,10 +467,10 @@ def parse_sast_tool_output(output, metadata):
                  final_finding['confidence'] = item['confidence']
             if 'trace' in item:
                  final_finding['trace'] = item['trace']
-            
+
             results.append(final_finding)
             seen_ids.add(finding_id)
-            
+
     return results
 
 def parse_iac_tool_output(output, metadata):
@@ -484,7 +484,7 @@ def parse_iac_tool_output(output, metadata):
     """
     results = []
     seen_finding_ids = set()
-    
+
     for query in output:
         # Query level fields
         query_name = query.get('query_name', 'Unknown Query')
@@ -492,7 +492,7 @@ def parse_iac_tool_output(output, metadata):
         severity_raw = query.get('severity', 'INFO').upper()
         description = query.get('description', 'No description available')
         query_category = query.get('category', 'IaC')
-        
+
         # Map Severity
         severity_map = {
             'CRITICAL': 'CRITICAL',
@@ -503,21 +503,21 @@ def parse_iac_tool_output(output, metadata):
             'TRACE': 'LOW'
         }
         severity = severity_map.get(severity_raw, 'LOW')
-        
+
         # Iterate over files where this query matched
         for f in query.get('files', []):
             file_path = f.get('file_name', 'unknown')
             line = f.get('line', 0)
             issue_type = f.get('issue_type', 'unknown')
             expected_value = f.get('expected_value', 'See documentation')
-            actual_value = f.get('actual_value', 'unknown')
-            
+            actual_value = f.get('actual_value', 'unknown')  # noqa: F841
+
             # Create unique ID
             finding_id = str(generate_unique_id([file_path, query_id, str(line)]))
-            
+
             if finding_id not in seen_finding_ids:
                 template = generate_finding_template(metadata)
-                
+
                 result = {
                     'finding_id': finding_id,
                     'title': query_name,
@@ -534,8 +534,8 @@ def parse_iac_tool_output(output, metadata):
                     'cwe': None, # KICS usually doesn't provide CWE in JSON output directly easily mapping
                     'cve': None
                 }
-                
+
                 results.append({**template, **result})
                 seen_finding_ids.add(finding_id)
-                
-    return results 
+
+    return results

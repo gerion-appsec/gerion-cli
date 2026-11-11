@@ -1,45 +1,51 @@
 """
 Custom types for Gerion CLI.
 """
-from typing import Optional
-from enum import Enum
-from pydantic import SecretStr
+import os
+from enum import StrEnum
 
-class OutputFormat(str, Enum):
+
+class OutputFormat(StrEnum):
     JSON = "json"
     MARKDOWN = "markdown"
     SARIF = "sarif"
     TABLE = "table"
 
+
 class SecretString:
     """
-    A wrapper for SecretStr that can be used with Typer.
-    This allows us to use SecretStr functionality while being compatible with Typer.
+    Holds a secret (API key) without ever exposing it through str()/repr().
+
+    The value is only reachable through get_secret_value(), so an accidental
+    f-string, log call or traceback dump prints a mask instead of the secret.
     """
-    
-    def __init__(self, value: Optional[str] = None):
-        self._secret = SecretStr(value) if value else None
-    
-    def get_secret_value(self) -> Optional[str]:
+
+    __slots__ = ("_value",)
+
+    def __init__(self, value: str | None = None):
+        self._value = value or None
+
+    def get_secret_value(self) -> str | None:
         """Get the actual secret value."""
-        return self._secret.get_secret_value() if self._secret else None
-    
+        return self._value
+
     def __bool__(self) -> bool:
         """Check if the secret has a value."""
-        return self._secret is not None and bool(self._secret.get_secret_value())
-    
+        return self._value is not None
+
     def __str__(self) -> str:
         """String representation (masked for security)."""
-        return "***" if self._secret else ""
-    
+        return "***" if self._value else ""
+
+    def __repr__(self) -> str:
+        return f"SecretString('{self}')"
+
     @classmethod
-    def from_env_var(cls, env_var: str) -> 'SecretString':
+    def from_env_var(cls, env_var: str) -> "SecretString":
         """Create a SecretString from an environment variable."""
-        import os
-        value = os.getenv(env_var)
-        return cls(value) if value else cls()
-    
+        return cls(os.getenv(env_var))
+
     @classmethod
-    def from_typer_option(cls, value: Optional[str]) -> 'SecretString':
+    def from_typer_option(cls, value: str | None) -> "SecretString":
         """Create a SecretString from a Typer option value."""
-        return cls(value) if value else cls() 
+        return cls(value)
