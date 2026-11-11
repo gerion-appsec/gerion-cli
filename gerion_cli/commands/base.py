@@ -25,7 +25,7 @@ from gerion_cli.tools import ToolError
 
 FAIL_ON_OPTION = typer.Option(
     None, "--fail-on", envvar="GERION_FAIL_ON", case_sensitive=False,
-    help="Exit with code 2 if any finding has at least this severity (default: never fail on findings)",
+    help="Exit with code 3 if any finding has at least this severity (default: never fail on findings)",
 )
 
 _SEVERITY_RANK = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
@@ -39,15 +39,28 @@ def count_findings_at_or_above(findings: list[dict[str, Any]], threshold: FailOn
     )
 
 
-def enforce_fail_on(findings: list[dict[str, Any]], fail_on: FailOn | None) -> None:
-    """Exit with code 2 when --fail-on is set and a finding meets the threshold."""
-    if fail_on is None:
-        return
-    count = count_findings_at_or_above(findings, fail_on)
-    if count:
-        error(f"{count} finding(s) with severity {fail_on.upper()} or higher (--fail-on {fail_on.value}).")
-        raise typer.Exit(2)
-    info(f"No findings with severity {fail_on.upper()} or higher (--fail-on {fail_on.value}).")
+def finish_scan(
+    findings: list[dict[str, Any]],
+    fail_on: FailOn | None,
+    *,
+    scan_failed: bool = False,
+    upload_failed: bool = False,
+) -> None:
+    """Report the severity gate and exit with precedence: scan (1), findings (3), API (4)."""
+    threshold_met = False
+    if fail_on is not None:
+        count = count_findings_at_or_above(findings, fail_on)
+        threshold_met = count > 0
+        if threshold_met:
+            error(f"{count} finding(s) with severity {fail_on.upper()} or higher (--fail-on {fail_on.value}).")
+        else:
+            info(f"No findings with severity {fail_on.upper()} or higher (--fail-on {fail_on.value}).")
+    if scan_failed:
+        raise typer.Exit(1)
+    if threshold_met:
+        raise typer.Exit(3)
+    if upload_failed:
+        raise typer.Exit(4)
 
 
 @cache
@@ -154,7 +167,7 @@ def dispatch_results(
     format: OutputFormat | None,
 ) -> bool:
     """
-    Returns True when the results were uploaded to the API but the upload failed
+    Returns True when delivery to the API was attempted but failed
     (callers must then exit non-zero); False otherwise, including console mode.
 
     Output Priority:
@@ -217,10 +230,9 @@ def run_scan(
     """
     Base function to run a security scan using a specified tool runner and parser.
 
-    Exits with code 1 when the scanner could not run or failed (a scan that did not
-    happen must never be reported as "no findings") or when the API upload failed
-    (CI must not believe the results were stored). With fail_on set, exits with code 2
-    once the results have been output if a finding meets the threshold; 1 wins over 2.
+    Exits with code 1 for scanner or command errors, 3 when --fail-on is met,
+    or 4 when API delivery fails. Results are emitted before evaluating the gate.
+    Precedence is 1 > 3 > 4; invalid CLI arguments use Typer's code 2.
     """
     set_log_level(log_level)
     api_key_string = SecretString.from_typer_option(api_key)
@@ -243,8 +255,10 @@ def run_scan(
         raise typer.Exit(1) from None
 
     results = build_results(scan_type, tool_output, tool_parser, metadata, code_path)
-    if dispatch_results(results, scan_type, api_url, effective_client_id, api_key_string, output_file, format):
+    upload_failed = dispatch_results(
+        results, scan_type, api_url, effective_client_id, api_key_string, output_file, format
+    )
+    if upload_failed:
         error(f"{scan_type} results could not be uploaded to the API; the findings above were not stored.")
-        raise typer.Exit(1)
-    enforce_fail_on(results['findings'], fail_on)
+    finish_scan(results['findings'], fail_on, upload_failed=upload_failed)
     return results
