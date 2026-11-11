@@ -1,5 +1,6 @@
 import time
 from collections.abc import Callable
+from functools import cache
 from importlib.metadata import entry_points
 from typing import Any
 
@@ -22,8 +23,14 @@ from gerion_cli.output import findings_table, resolve_file_format, save_to_file
 from gerion_cli.tools import ToolError
 
 
+@cache
 def _discover_enrichers():
-    """Discover and instantiate premium enrichers via entry_points."""
+    """
+    Discover and instantiate premium enrichers via entry_points.
+
+    Cached: scan-all enriches four scans, and the entry_points lookup scans every
+    installed distribution.
+    """
     eps = entry_points(group="gerion.enrichers")
     enrichers = []
     for ep in eps:
@@ -57,7 +64,8 @@ def execute_tool(
     except Exception as e:
         raise ToolError(f"unexpected error running {tool_name}: {e}") from e
     scan_duration = round(time.time() - start_time, 2)
-    info(f"Found {len(tool_output)} potential issues in {scan_duration}s")
+    # Scanners may run concurrently (scan-all): name the tool in the result line.
+    info(f"{tool_name} found {len(tool_output)} potential issues in {scan_duration}s")
     return tool_output, scan_duration
 
 

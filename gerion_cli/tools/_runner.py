@@ -11,6 +11,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable, Collection
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,11 @@ def output_tail(output: str | None, limit: int = OUTPUT_TAIL_CHARS) -> str:
     return text
 
 
+# Scanners currently running in any thread, so they can all be killed on Ctrl-C.
+_running: set[subprocess.Popen] = set()
+_running_lock = threading.Lock()
+
+
 def _kill_process_group(process: subprocess.Popen) -> None:
     """Kill the scanner and every process it started (they share its process group)."""
     try:
@@ -46,6 +52,14 @@ def _kill_process_group(process: subprocess.Popen) -> None:
             process.kill()
     except ProcessLookupError:
         pass
+
+
+def kill_running_tools() -> None:
+    """Kill every scanner (and its children) currently started by run_tool in this process."""
+    with _running_lock:
+        processes = list(_running)
+    for process in processes:
+        _kill_process_group(process)
 
 
 def run_tool(
@@ -92,6 +106,8 @@ def run_tool(
             )
         except OSError as e:
             raise ToolError(f"{tool} could not be started: {e}") from e
+        with _running_lock:
+            _running.add(process)
         with process:
             try:
                 output, _ = process.communicate(timeout=timeout)
@@ -101,6 +117,9 @@ def run_tool(
             except BaseException:
                 _kill_process_group(process)
                 raise
+            finally:
+                with _running_lock:
+                    _running.discard(process)
 
         exit_code = process.returncode
         if exit_code in no_report_exit_codes:
