@@ -79,9 +79,9 @@ export GERION_API_KEY="your-m2m-api-key"
 
 Use an `https://` API URL: the API key is sent to it. Plain `http://` is accepted for local development but prints a warning unless the host is `localhost`, `127.0.0.1` or `::1`. To trust a private CA, set `GERION_CA_BUNDLE` to a PEM file or to a directory of hashed certificates.
 
-Copy `env.example` to `.env` for local development. All options can also be passed directly as CLI flags on each command.
+Use `env.example` as a template and export its variables in your shell or CI environment; the CLI does not load `.env` files automatically. Command options can also be passed as CLI flags.
 
-The `CLIENT_ID` is set automatically to `gerion-cli-{version}` (e.g. `gerion-cli-1.0.4`). It can be overridden with `GERION_CLIENT_ID` if needed.
+The `CLIENT_ID` is set automatically to `gerion-cli-{version}` (e.g. `gerion-cli-1.1.0`). It can be overridden with `GERION_CLIENT_ID` if needed.
 
 ---
 
@@ -103,11 +103,11 @@ Each scan command accepts the same core set of options:
 |--------|---------|-------------|
 | `--api-url` | `GERION_API_URL` | Gerion API Gateway base URL |
 | `--api-key` | `GERION_API_KEY` | M2M API key for authentication |
-| `--client-id` | `GERION_CLIENT_ID` | Client identifier (default: `gerion-{version}`) |
+| `--client-id` | `GERION_CLIENT_ID` | Client identifier (default: `gerion-cli-{version}`) |
 | `--output-file` | — | Write results to a file (suppresses API and console output) |
 | `--format` | — | Output format for stdout: `json`, `markdown`, `sarif`, `table` |
 | `--timeout` | — | Scanner execution timeout in seconds (default: 180) |
-| `--fail-on` | `GERION_FAIL_ON` | Exit with code 2 if any finding has at least this severity: `critical`, `high`, `medium`, `low` (default: unset, findings never fail the command) |
+| `--fail-on` | `GERION_FAIL_ON` | Exit with code 3 if any finding has at least this severity: `critical`, `high`, `medium`, `low` (default: unset, findings never fail the command) |
 | `--log-level` | — | Logging verbosity: `debug`, `info`, `warning`, `error`, `critical` |
 
 The IaC scan additionally accepts `--queries-path` to specify a custom KICS queries directory.
@@ -187,7 +187,7 @@ uv run gerion report [PATH] [OPTIONS]
   run: |
     docker run --rm -v "$PWD:/code" \
       -e GERION_API_URL -e GERION_API_KEY \
-      gerion-cli scan-all /code --fail-on high   # exit 2 on HIGH or CRITICAL findings
+      gerion-cli scan-all /code --fail-on high   # exit 3 on HIGH or CRITICAL findings
 ```
 
 ### GitLab CI
@@ -215,7 +215,8 @@ Scan results include Git metadata (repository, branch, commit hash, author, buil
 
 The API expects `build_id` to be numeric: CI detection only uses numeric values and otherwise keeps `0`, and a non-numeric `GERION_BUILD_ID` prints a warning. Scans are stored per (organization, branch, scan type, build ID), so a build ID that is unique per run keeps one scan per run.
 
-The official GitHub Action forwards only a fixed list of variables to the container. For per-run scan history and pull request head commits it should also forward `GITHUB_RUN_ID` and ideally `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME` and `GITHUB_EVENT_PATH` (mounting the event file). Until then the CLI falls back to `GITHUB_RUN_ATTEMPT` and `GITHUB_SHA`, so every run of a branch overwrites the same scan and pull request scans report the merge commit.
+The updated official GitHub Action forwards `GITHUB_RUN_ID`, `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME` and the other metadata variables, and mounts `GITHUB_EVENT_PATH` read-only when available. This preserves per-run history and lets the CLI record PR head commits. Use an Action revision containing this update; older revisions fall back to `GITHUB_RUN_ATTEMPT` and `GITHUB_SHA`.
+
 
 ---
 

@@ -103,8 +103,7 @@ def _github_commit_sha() -> str | None:
     """
     Commit being scanned on GitHub Actions: the PR head SHA for pull_request events
     (GITHUB_SHA is the synthetic merge commit there), else GITHUB_SHA, else
-    GITHUB_WORKFLOW_SHA. The event file is optional: the official Action does not
-    forward it, so any problem reading it is ignored.
+    GITHUB_WORKFLOW_SHA. The event file is optional; any problem reading it is ignored.
     """
     if os.getenv("GITHUB_EVENT_NAME", "").startswith("pull_request"):
         event_path = os.getenv("GITHUB_EVENT_PATH")

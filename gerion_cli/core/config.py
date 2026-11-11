@@ -3,7 +3,7 @@ import importlib.metadata
 try:
     __version__ = importlib.metadata.version("gerion-cli")
 except importlib.metadata.PackageNotFoundError:
-    __version__ = "1.0.4"
+    __version__ = "1.1.0"
 
 # Client ID is static and based on CLI version
 # Format: gerion-cli-{version}
