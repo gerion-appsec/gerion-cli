@@ -85,9 +85,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python build dependencies
-RUN pip install poetry pyinstaller && \
-    poetry config virtualenvs.create false && \
-    poetry install --no-interaction --no-ansi && \
+RUN pip install . pyinstaller && \
     # Remove Premium code for Standard Image (Open Core)
     rm -rf gerion_cli/pro && \
     pyinstaller --name gerion --copy-metadata gerion-cli --distpath /usr/local/bin/ --onefile gerion_cli/main.py

@@ -1,25 +1,66 @@
-[tool.poetry]
+[project]
 name = "gerion-cli"
-version = "1.0.0"
+version = "1.0.4"
 description = "A powerful command-line interface for performing security scans on your codebase"
-authors = ["gerion-appsec"]
+authors = [{ name = "gerion-appsec" }]
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.12"
+dependencies = [
+    "typer>=0.29.1,<1.0",
+    "gitpython>=3.1.44,<4.0",
+    "httpx>=0.28.1,<1.0",
+    "rich>=15.0,<16.0",
+    "fpdf2>=2.9.0,<3.0",
+    "packaging>=26.0",
+]
 
-[tool.poetry.scripts]
+[project.urls]
+Homepage = "https://gerion-appsec.com"
+Repository = "https://github.com/gerion-appsec/gerion-cli"
+
+[project.scripts]
 gerion = "gerion_cli.main:app"
 
-[tool.poetry.dependencies]
-python = "^3.12"
-typer = "^0.24.0"
-gitpython = "^3.1.44"
-httpx = "^0.28.0"
-rich = "^14.0.0"
-pydantic = "^2.6.0"
-fpdf2 = "^2.8.5"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^9.0.2"
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.4",
+]
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.33,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gerion_cli"]
+
+[tool.hatch.build.targets.sdist]
+include = ["gerion_cli", "tests", "README.md", "LICENSE", "NOTICE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, B: bugbear, UP: pyupgrade,
+# S: bandit (security), C4: comprehensions, SIM: simplify, PTH is intentionally off.
+select = ["E", "W", "F", "I", "B", "UP", "S", "C4", "SIM"]
+ignore = [
+    "E501",   # line length is handled by the formatter
+    "B008",   # typer.Option()/Argument() in defaults is the Typer idiom
+    "S603",   # subprocess with a fixed argv list and no shell is the whole point of this tool
+    "S607",   # scanners are resolved from PATH by design
+    "W291",   # legacy trailing whitespace; left for a dedicated formatting pass to keep diffs small
+    "W293",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]  # package re-exports
+"tests/*" = ["S101", "S105", "S106", "S108"]
