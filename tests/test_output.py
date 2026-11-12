@@ -125,8 +125,20 @@ def test_markdown_escapes_table_cells_and_joins_cves():
 
 
 @pytest.mark.parametrize("fmt", [OutputFormat.MARKDOWN, OutputFormat.SARIF, OutputFormat.JSON])
-def test_outputs_are_identical_for_any_severity_casing(sample_results, tmp_path, fmt):
+def test_outputs_are_identical_for_any_severity_casing(sample_results, tmp_path, fmt, monkeypatch):
     """Scanners now emit upper-case severities; every consumer must treat casing alike."""
+    import datetime as real_datetime
+
+    from gerion_cli.output import formats
+
+    class FrozenDatetime(real_datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 1, 1, 12, 0, 0, tzinfo=tz)
+
+    # Markdown and SARIF embed the generation time; without this the three renders
+    # differ whenever the clock ticks over a second between them.
+    monkeypatch.setattr(formats, "datetime", FrozenDatetime)
     rendered = {}
     for casing in ("High", "HIGH", "high"):
         sample_results["findings"][0]["severity"] = casing
