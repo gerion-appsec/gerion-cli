@@ -89,7 +89,7 @@ def report(
         "branch_name": current_branch if current_branch != "local" else None,
         "scan_type": scan_type,
         "severity": severity,
-        "active_only": active_only,
+        "is_active": True if active_only else None,
         "limit": REPORT_LIMIT
     }
 
