@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1 — 2026-11-12
+
+### Fixes
+
+- `gerion report --active-only` now filters on the server. The command sent an
+  `active_only` parameter that the reporting endpoint does not know and silently
+  ignored, so mitigated and false-positive findings were always returned and could
+  crowd active ones out of the 1000-finding limit. It now sends `is_active=true`;
+  `--all` sends no filter.
+
 ## 1.1.0 — 2026-11-11
 
 ### CI behavior changes
