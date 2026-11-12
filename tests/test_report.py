@@ -64,3 +64,24 @@ def test_report_tolerates_null_fields(monkeypatch, tmp_path):
     assert written == findings
     markdown = generate_markdown_report(findings, "r", "b", True, True, False)
     assert "| Active | UNKNOWN | N/A | N/A |" in markdown
+
+
+@pytest.mark.parametrize(("active_only", "expected"), [(True, {"is_active": True}), (False, {})])
+def test_report_sends_the_active_filter_the_api_understands(monkeypatch, tmp_path, active_only, expected):
+    sent = {}
+
+    class _RecordingClient(_FakeClient):
+        def get(self, url, params, headers):
+            sent.update(params)
+            return super().get(url, params, headers)
+
+    monkeypatch.setattr("gerion_cli.api.auth.authenticate_with_api", lambda *a: "jwt")
+    monkeypatch.setattr("httpx.Client", lambda **kw: _RecordingClient([{"finding_id": "1"}]))
+    report_module.report(
+        path=str(tmp_path), repo="r", branch="b", scan_type=None, severity=None, format=ReportFormat.JSON,
+        output_file=str(tmp_path / "r.json"), api_url="https://api.test", client_id=None, api_key="k",
+        active_only=active_only, include_description=True, include_mitigation=True, log_level="info",
+    )
+    assert "active_only" not in sent
+    assert {k: v for k, v in sent.items() if k == "is_active"} == expected
+
