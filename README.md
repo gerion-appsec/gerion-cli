@@ -81,7 +81,7 @@ Use an `https://` API URL: the API key is sent to it. Plain `http://` is accepte
 
 Use `env.example` as a template and export its variables in your shell or CI environment; the CLI does not load `.env` files automatically. Command options can also be passed as CLI flags.
 
-The `CLIENT_ID` is set automatically to `gerion-cli-{version}` (e.g. `gerion-cli-1.1.0`). It can be overridden with `GERION_CLIENT_ID` if needed.
+The `CLIENT_ID` is set automatically to `gerion-cli-{version}` (e.g. `gerion-cli-1.1.1`). It can be overridden with `GERION_CLIENT_ID` if needed.
 
 ---
 
