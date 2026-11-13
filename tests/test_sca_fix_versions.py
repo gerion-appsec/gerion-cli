@@ -127,3 +127,16 @@ def test_non_pep440_versions(mock_metadata):
 ])
 def test_compare_versions(a, b, expected):
     assert compare_versions(a, b) == expected
+
+
+def test_malicious_package_record_is_critical(mock_metadata):
+    """OSV MAL-* records have no severity; they used to fall through to LOW."""
+    mal = {
+        "id": "MAL-2025-6812",
+        "aliases": [],
+        "summary": "Malicious code in eslint-plugin-react_editor (npm)",
+        "database_specific": {"malicious-packages-origins": [{"source": "ossf-package-analysis"}]},
+        "affected": [_affected("eslint-plugin-react_editor", ("ECOSYSTEM", [{"introduced": "0"}]))],
+    }
+    findings = parse_sca_tool_output(_osv_output("eslint-plugin-react_editor", "71.71.72", [mal]), mock_metadata)
+    assert [f["severity"] for f in findings] == ["CRITICAL"]

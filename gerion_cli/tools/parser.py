@@ -176,6 +176,10 @@ def _applicable_fixed_version(vuln: dict, pkg_name: str, pkg_ecosystem: str, pkg
 
 
 def _extract_severity_for_vuln(vuln: dict, pkg_name: str, pkg_ecosystem: str) -> str:
+    # OpenSSF malicious-package records (MAL-*) carry no severity: the package itself is hostile
+    if str(vuln.get('id', '')).startswith('MAL-'):
+        return 'CRITICAL'
+
     severity_raw = vuln.get('database_specific', {}).get('severity')
 
     if not severity_raw:

@@ -229,6 +229,19 @@ The updated official GitHub Action forwards `GITHUB_RUN_ID`, `GITHUB_ACTIONS`, `
 
 ---
 
+## Versioning
+
+This repository follows [Semantic Versioning 2.0.0](https://semver.org/) and is versioned independently of the other Gerion components.
+
+- **Public contract**: command names, options, exit codes and output formats, as documented in this README and in `CHANGELOG.md`.
+- **MAJOR**: a change that breaks that contract (removing or renaming a command or option, changing the meaning of an exit code or the structure of an output format).
+- **MINOR**: backwards-compatible additions (new commands, options, scan types or output fields).
+- **PATCH**: backwards-compatible fixes, dependency updates and internal changes.
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/): `fix:` maps to a patch, `feat:` to a minor, and a `!` after the type or a `BREAKING CHANGE:` footer to a major.
+
+The version lives in `pyproject.toml`; `gerion --version` reads it from the installed package. Releases are tagged `vX.Y.Z` with annotated tags on `main`. Versions up to 1.1.1 predate this policy and were not bumped by contract; tags are never moved or reused.
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).
