@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.2 — 2026-11-13
+
+### Fixes
+
+- Malicious packages are reported as `CRITICAL`. OpenSSF records (`MAL-*` in OSV)
+  carry no severity, so they fell through to `LOW` and a hostile dependency sat at
+  the bottom of the results, below the `--fail-on` threshold of most pipelines.
+
 ## 1.1.1 — 2026-11-12
 
 ### Fixes
