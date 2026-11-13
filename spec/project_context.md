@@ -2,7 +2,7 @@
 
 ## Identity and boundaries
 
-**Project:** Gerion CLI 1.1.1 (see `pyproject.toml`).
+**Project:** Gerion CLI 1.1.2 (see `pyproject.toml`).
 **Runtime:** Python 3.12+; container Python 3.13.
 **Purpose:** Orchestrate SAST, SCA, Secrets and IaC scanners, normalize findings,
 collect repository/CI metadata, render output and submit scans to the API Gateway.
