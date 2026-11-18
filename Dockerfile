@@ -16,7 +16,7 @@
 # ------------------------------------------------------------------------------
 # Stage 1: tool-builder
 # ------------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS tool-builder
+FROM --platform=$BUILDPLATFORM python:3.15-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS tool-builder
 
 ARG TARGETARCH
 
@@ -81,7 +81,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" go build -trimpath \
 # Locked runtime requirements with hashes. Only depends on pyproject.toml/uv.lock,
 # so the dependency layer in the final image is cached when only source changes.
 # ------------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS cli-reqs
+FROM --platform=$BUILDPLATFORM python:3.15-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS cli-reqs
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /usr/local/bin/uv
 
@@ -92,7 +92,7 @@ RUN uv export --locked --no-dev --no-emit-project --format requirements-txt -o /
 # ------------------------------------------------------------------------------
 # Stage 4: cli-wheel
 # ------------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90 AS cli-wheel
+FROM --platform=$BUILDPLATFORM python:3.15-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS cli-wheel
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /usr/local/bin/uv
 
@@ -106,7 +106,7 @@ RUN rm -rf gerion_cli/pro && uv build --wheel --out-dir /wheels
 # ------------------------------------------------------------------------------
 # Stage 5: final
 # ------------------------------------------------------------------------------
-FROM python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
+FROM python:3.15-slim-trixie@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
 
 # - git: required by Gitleaks and Opengrep, and read by the CLI for repository metadata
 RUN apt-get update && apt-get install -y --no-install-recommends \
